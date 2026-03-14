@@ -1,23 +1,36 @@
+import os
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.declarative import declarative_base
 
 from core.config import settings
 
-engine = create_engine(settings.DATABASE_URL)
+# If DATABASE_URL is a relative sqlite path, make it absolute relative to this file's directory
+# This ensures the database.db is always created inside the backend/ folder, regardless of where
+# the server is launched from.
+database_url = settings.DATABASE_URL
+if database_url.startswith("sqlite:///./"):
+    db_filename = database_url.replace("sqlite:///./", "")
+    db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", db_filename)
+    db_path = os.path.normpath(db_path)
+    database_url = f"sqlite:///{db_path}"
+
+engine = create_engine(database_url, connect_args={"check_same_thread": False})
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-Base= declarative_base()
+Base = declarative_base()
 
-# access a db session and ensure there's no multiple sessions open at the same time.
+
 def get_db():
+    """Provide a database session and ensure it's closed after each request."""
     db = SessionLocal()
     try:
         yield db
     finally:
         db.close()
-    
-# when application is first run, create tables based on the models and put them in the database.     
+
+
 def create_tables():
+    """Create all tables based on models when the application starts."""
     Base.metadata.create_all(bind=engine)
