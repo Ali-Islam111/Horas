@@ -11,9 +11,11 @@ ENV
 __pycache__/
 *.py[cod]
 *.pyo
+*$py.class  
 
 # SQLite database file (auto-generated, do not commit)
 *.db
+*.sqlite3
 
 # IDE / Editor
 .vscode/
