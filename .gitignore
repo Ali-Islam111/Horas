@@ -1,5 +1,24 @@
-# Virtual Environment
+# Virtual Environments
 .venv
+venv
+env
+ENV
 
-# Environment Variables
+# Environment Variables (contains secrets — never commit!)
 .env
+
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
+
+# SQLite database file (auto-generated, do not commit)
+*.db
+
+# IDE / Editor
+.vscode/
+.idea/
+
+# OS Files
+.DS_Store
+Thumbs.db

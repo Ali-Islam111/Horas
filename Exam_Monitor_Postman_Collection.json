@@ -1,0 +1,253 @@
+{
+    "info": {
+        "_postman_id": "a1b2c3d4-e5f6-7890-1234-56789abcdef0",
+        "name": "Horas Demo API",
+        "description": "Postman collection for the Horas Demo FastAPI backend.\n\n**How to use:**\n1. Run 'Register' to create an account.\n2. Run 'Login' — the token is saved automatically as {{jwt_token}}.\n3. All protected requests use {{jwt_token}} automatically.\n\n**Google OAuth2:**\nOpen the 'Login with Google' URL in a browser — Postman cannot handle browser redirects.",
+        "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+    },
+    "variable": [
+        {
+            "key": "base_url",
+            "value": "http://127.0.0.1:8000",
+            "type": "string"
+        },
+        {
+            "key": "jwt_token",
+            "value": "",
+            "type": "string"
+        }
+    ],
+    "item": [
+        {
+            "name": "1. Authentication",
+            "item": [
+                {
+                    "name": "Register (Create Account)",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"email\": \"mohamed@example.com\",\n  \"full_name\": \"Mohamed Ahmed\",\n  \"role\": \"student\",\n  \"password\": \"strongpassword123\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/auth/register",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "auth",
+                                "register"
+                            ]
+                        },
+                        "description": "Create a new user account.\n\n**Body (JSON):**\n- `email` — must be unique\n- `full_name` — display name\n- `role` — `student` or `admin` (defaults to `student`)\n- `password` — plain text, will be hashed server-side"
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Login (Get Token)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "var jsonData = pm.response.json();",
+                                    "if (jsonData.access_token) {",
+                                    "    pm.collectionVariables.set(\"jwt_token\", jsonData.access_token);",
+                                    "    console.log(\"✅ Token saved:\", jsonData.access_token);",
+                                    "}"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/x-www-form-urlencoded"
+                            }
+                        ],
+                        "body": {
+                            "mode": "urlencoded",
+                            "urlencoded": [
+                                {
+                                    "key": "username",
+                                    "value": "mohamed@example.com",
+                                    "description": "Your email address",
+                                    "type": "text"
+                                },
+                                {
+                                    "key": "password",
+                                    "value": "strongpassword123",
+                                    "type": "text"
+                                }
+                            ]
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/auth/login",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "auth",
+                                "login"
+                            ]
+                        },
+                        "description": "Login with email and password.\n\nThe JWT Bearer token is **automatically saved** to `{{jwt_token}}` for use in all protected requests."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Login with Google (Open in Browser)",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{base_url}}/api/auth/google",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "auth",
+                                "google"
+                            ]
+                        },
+                        "description": "⚠️ **Must be opened in a real browser — not Postman!**\n\nPostman cannot handle browser-based OAuth2 redirects.\n\n**Flow:**\n1. Open `http://127.0.0.1:8000/api/auth/google` in your browser\n2. You are redirected to Google's login page\n3. After signing in, Google redirects to `/api/auth/google/callback`\n4. The backend issues a JWT and redirects you to: `http://localhost:5173/auth/callback?token=<your_jwt>`\n5. Your frontend reads the token from the URL and stores it\n\n**Setup needed:**\n- Add your `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` to the `.env` file\n- Register `http://127.0.0.1:8000/api/auth/google/callback` as an authorized redirect URI in Google Cloud Console"
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Google OAuth2 Callback (Internal — Do Not Call Manually)",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{base_url}}/api/auth/google/callback",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "auth",
+                                "google",
+                                "callback"
+                            ]
+                        },
+                        "description": "🔒 **This endpoint is called automatically by Google after the user approves access.**\n\nDo NOT call this manually. Google sends a `code` query parameter here after login.\n\nThe backend then:\n1. Exchanges the `code` for a Google access token\n2. Fetches the user's email & name from Google\n3. Auto-creates the user in the database if they don't exist\n4. Issues a JWT and redirects to the frontend"
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "2. Users (Protected)",
+            "item": [
+                {
+                    "name": "Get All Users",
+                    "request": {
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{jwt_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{base_url}}/api/users/",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "users",
+                                ""
+                            ]
+                        },
+                        "description": "Get a list of all registered users with full data.\n\n**Requires:** Bearer token from Login or Google OAuth2."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Get Current User (Me)",
+                    "request": {
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{jwt_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{base_url}}/api/users/me",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "users",
+                                "me"
+                            ]
+                        },
+                        "description": "Get the profile of the currently authenticated user.\n\n**Requires:** Bearer token from Login or Google OAuth2."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Get User by ID",
+                    "request": {
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{jwt_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{base_url}}/api/users/1",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "users",
+                                "1"
+                            ]
+                        },
+                        "description": "Get a specific user by their numeric ID.\n\nChange `1` in the URL to the desired user ID.\n\n**Requires:** Bearer token from Login or Google OAuth2."
+                    },
+                    "response": []
+                }
+            ]
+        }
+    ]
+}

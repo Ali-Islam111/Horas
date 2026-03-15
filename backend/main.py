@@ -1,10 +1,26 @@
+import os
+import sys
+
+# Ensures 'core', 'models', 'routers' are found regardless of run directory
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from core.config import settings
-from core.database import create_tables
-from routers import auth, exam, questions, session, events, streaming
+from starlette.middleware.sessions import SessionMiddleware
 
-# Automatically create all database tables when the server starts.
+from core.database import create_tables
+from core.config import settings
+
+# Register all models with SQLAlchemy before create_tables()
+from models import user, exam, questions, session, events
+
+# Routers
+from routers.auth import router as auth_router, token_router
+from routers.users import router as users_router
+from routers import exam as r_exam, questions as r_questions
+from routers import session as r_session, events as r_events, streaming
+
+# Create DB tables on startup
 create_tables()
 
 app = FastAPI(
@@ -15,35 +31,38 @@ app = FastAPI(
     redoc_url="/redoc",
 )
 
-# Configure CORS to ensure the React/Vite frontend can communicate with this backend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.ALLOWED_ORIGINS,  
+    allow_origins=settings.get_allowed_origins(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Mount all the routers to the main app, adding prefixes and tags for the Swagger Docs
-app.include_router(auth.router, prefix=settings.API_PREFIX)
-app.include_router(exam.router, prefix=settings.API_PREFIX)
-app.include_router(questions.router, prefix=settings.API_PREFIX)
-app.include_router(session.router, prefix=settings.API_PREFIX)
-app.include_router(events.router, prefix=settings.API_PREFIX)
+# Required by Authlib to store OAuth2 state between the Google redirect and callback
+app.add_middleware(SessionMiddleware, secret_key=settings.SECRET_KEY)
 
-# Note: Streaming usually doesn't have a global prefix here because WebSockets 
-# define their own full paths (e.g., /ws/sessions/{id}) inside the router itself.
+# ── Auth & Users (public + protected) ──────────────────────────────────
+app.include_router(token_router)                          # POST /token  (Swagger OAuth2)
+
+app.include_router(auth_router, prefix=settings.API_PREFIX)   # POST /api/auth/register
+                                                               # POST /api/auth/login
+
+app.include_router(users_router, prefix=settings.API_PREFIX)  # GET  /api/users/
+                                                               # GET  /api/users/me
+                                                               # GET  /api/users/{id}
+
+# ── Other prefixed routes ───────────────────────────────────────────────
+app.include_router(r_exam.router, prefix=settings.API_PREFIX)
+app.include_router(r_questions.router, prefix=settings.API_PREFIX)
+app.include_router(r_session.router, prefix=settings.API_PREFIX)
+app.include_router(r_events.router, prefix=settings.API_PREFIX)
 app.include_router(streaming.router, tags=["Live Streaming & WebSockets"])
 
-# A simple health check route to verify the server is alive
-@app.get("/", tags=["Health Check"])
+@app.get("/", tags=["Health"])
 def root():
-    return {
-        "status": "online",
-        "message": "Welcome to the Horas Demo API. Navigate to /docs for the interactive API reference."
-    }
+    return {"status": "online", "message": "Horas Demo API is running. Visit /docs for the full API reference."}
 
 if __name__ == "__main__":
     import uvicorn
-    # reload=True automatically restarts the server when you save a file
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
