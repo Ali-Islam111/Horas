@@ -63,6 +63,8 @@ app.include_router(streaming.router, tags=["Live Streaming & WebSockets"])
 def root():
     return {"status": "online", "message": "Horas Demo API is running. Visit /docs for the full API reference."}
 
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    # uvicorn main:app --reload --app-dir backend

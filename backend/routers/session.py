@@ -1,10 +1,95 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.orm import Session
+from datetime import datetime, timezone
+from typing import List
+
+from core.database import get_db
+from core.dependencies import get_current_user, get_current_student
+from core import crud
+from schemas.session import SessionCreate, SessionResponse, StudentAnswerSubmit, SubmissionResult
 
 router = APIRouter(
-    prefix="/session",
-    tags=["Session"],
+    prefix="/sessions",
+    tags=["Sessions"],
 )
 
-@router.get("/")
-def get_session():
-    return {"message": "Session endpoint"}
+@router.post("/enroll/{exam_id}", response_model=SessionResponse)
+def enroll_exam(
+    exam_id: int,
+    db: Session = Depends(get_db),
+    current_student = Depends(get_current_student)
+):
+    """Student only: Enroll in an exam and start a session."""
+    # Check if exam exists
+    exam = crud.get_exam_by_id(db, exam_id=exam_id)
+    if not exam:
+        raise HTTPException(status_code=404, detail="Exam not found")
+    
+    # Check if student already has an active or completed session for this exam
+    existing_session = crud.get_session_by_user_and_exam(db, user_id=current_student.id, exam_id=exam_id)
+
+    
+    if existing_session:
+        return existing_session
+
+    session_in = SessionCreate(user_id=current_student.id, exam_id=exam_id)
+    return crud.create_session(db, session_in=session_in)
+
+@router.post("/{session_id}/submit", response_model=SubmissionResult)
+def submit_exam(
+    session_id: int,
+    submission: StudentAnswerSubmit,
+    db: Session = Depends(get_db),
+    current_student = Depends(get_current_student)
+):
+    """Student only: Submit choices and calculate score."""
+    session_record = crud.get_session_by_id(db, session_id=session_id)
+    if not session_record:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    if session_record.user_id != current_student.id:
+        raise HTTPException(status_code=403, detail="Not authorized to submit this session")
+    
+    if session_record.status == "completed":
+        raise HTTPException(status_code=400, detail="Exam already submitted")
+
+    # Grading Logic
+    questions = crud.get_exam_questions(db, exam_id=session_record.exam_id)
+    if not questions:
+        raise HTTPException(status_code=400, detail="Exam has no questions")
+
+    correct_count = 0
+    total_questions = len(questions)
+    
+    # Student answers are in submission.answers: { "question_id": "selected_choice" }
+    for q in questions:
+        student_choice = submission.answers.get(str(q.id))
+        if student_choice == q.correct_choice:
+            correct_count += 1
+
+    score = (correct_count / total_questions) * 100
+    
+    # Update session
+    session_record.student_answers = submission.answers
+    session_record.final_score = score
+    session_record.status = "completed"
+    session_record.submitted_at = datetime.now(timezone.utc)
+    
+    db.commit()
+    db.refresh(session_record)
+    
+    return {
+        "message": "Exam submitted successfully",
+        "score": score,
+        "total_questions": total_questions
+    }
+
+@router.get("/my-submissions", response_model=List[SessionResponse])
+def get_my_submissions(
+    db: Session = Depends(get_db),
+    current_student = Depends(get_current_student)
+):
+    """Student only: Get all their own exam submissions."""
+    return crud.get_student_submissions(db, user_id=current_student.id)
+
+
