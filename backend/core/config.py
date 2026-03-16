@@ -7,7 +7,8 @@ class Settings(BaseSettings):
     # Default values
     API_PREFIX: str = "/api"
     DEBUG: bool = False
-    DATABASE_URL: str = "sqlite:///./database.db"
+    DATABASE_URL: str = "sqlite:///./horas_DB.db"
+
 
     # ALLOWED_ORIGINS is stored as a plain string in .env (comma-separated)
     # and converted to a list by the validator below.
