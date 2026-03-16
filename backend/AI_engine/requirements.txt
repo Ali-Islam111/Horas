@@ -1,0 +1,58 @@
+# ==============================================================
+# requirements.txt  —  AI Proctoring System
+# ==============================================================
+#
+# INSTALL ORDER — follow exactly to avoid conflicts:
+#
+#   Step 1: Install PyTorch with CUDA (run setup_cuda.bat, or manually):
+#           pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+#
+#   Step 2: Install CTranslate2 before faster-whisper (avoids binary conflict):
+#           pip install ctranslate2>=4.0.0
+#
+#   Step 3: pip install -r requirements.txt
+#
+# VERSION CONFLICT NOTES:
+#   - numpy: mediapipe requires numpy<2.0; pinned to <2.0 to prevent breakage
+#   - tensorflow: 2.15.x is the last version that bundles keras 2 AND works
+#     with tensorflow-hub. TF 2.16+ moved to keras 3 and breaks hub models.
+#     deepface 0.0.93+ requires tf-keras separately — installed below.
+#   - faster-whisper: requires ctranslate2>=4.0, which requires numpy<2.0
+#     (already covered). Do NOT install openai-whisper alongside it.
+#   - mediapipe: 0.10.14+ dropped support for Python 3.8. Requires numpy<2.0.
+#   - ultralytics (YOLO11): requires torch>=2.0 — satisfied by Step 1 above.
+#   - deepface: 0.0.93+ no longer bundles keras; needs tf-keras shim below.
+
+# ── Core vision ───────────────────────────────────────────────
+opencv-python>=4.8.0,<4.11.0
+mediapipe>=0.10.9,<0.11.0
+numpy>=1.24.0,<2.0.0          # upper bound: mediapipe + ctranslate2 both require <2.0
+
+# ── YOLO ──────────────────────────────────────────────────────
+ultralytics>=8.2.0             # YOLO11 support starts at 8.2
+
+# ── Identity verification ─────────────────────────────────────
+deepface>=0.0.93
+tf-keras>=2.15.0               # required by deepface 0.0.93+ (keras 3 shim)
+
+# ── Audio: speech transcription ───────────────────────────────
+# faster-whisper 1.x uses CTranslate2 4.x — install ctranslate2 first (see Step 2)
+faster-whisper>=1.0.0
+
+# ── Audio: non-speech media detection ────────────────────────
+# TF 2.15 is the last version compatible with tensorflow-hub AND deepface.
+# Do NOT upgrade to 2.16+ (breaks hub model loading and deepface backend).
+tensorflow>=2.13.0,<2.16.0
+tensorflow-hub>=0.14.0,<0.17.0
+
+# ── Audio: microphone recording ───────────────────────────────
+sounddevice>=0.4.6
+
+# ── Anomaly detection ─────────────────────────────────────────
+scikit-learn>=1.3.0
+
+# ── PDF report ────────────────────────────────────────────────
+reportlab>=4.0.0
+
+# ── Optional: audio format fallback if ffmpeg not on PATH ─────
+# pydub>=0.25.1
