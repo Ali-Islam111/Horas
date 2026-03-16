@@ -35,6 +35,10 @@ def enroll_exam(
     session_in = SessionCreate(user_id=current_student.id, exam_id=exam_id)
     return crud.create_session(db, session_in=session_in)
 
+from services.exam_scoring import ScoringEngine
+
+
+
 @router.post("/{session_id}/submit", response_model=SubmissionResult)
 def submit_exam(
     session_id: int,
@@ -53,25 +57,17 @@ def submit_exam(
     if session_record.status == "completed":
         raise HTTPException(status_code=400, detail="Exam already submitted")
 
-    # Grading Logic
+    # Fetch questions to grade
     questions = crud.get_exam_questions(db, exam_id=session_record.exam_id)
     if not questions:
         raise HTTPException(status_code=400, detail="Exam has no questions")
 
-    correct_count = 0
-    total_questions = len(questions)
+    # Use the Scoring Engine
+    result = ScoringEngine.calculate_score(questions, submission.answers)
     
-    # Student answers are in submission.answers: { "question_id": "selected_choice" }
-    for q in questions:
-        student_choice = submission.answers.get(str(q.id))
-        if student_choice == q.correct_choice:
-            correct_count += 1
-
-    score = (correct_count / total_questions) * 100
-    
-    # Update session
+    # Update session record
     session_record.student_answers = submission.answers
-    session_record.final_score = score
+    session_record.final_score = result["score_percentage"]
     session_record.status = "completed"
     session_record.submitted_at = datetime.now(timezone.utc)
     
@@ -80,9 +76,10 @@ def submit_exam(
     
     return {
         "message": "Exam submitted successfully",
-        "score": score,
-        "total_questions": total_questions
+        "score": result["score_percentage"],
+        "total_questions": result["total_questions"]
     }
+
 
 @router.get("/my-submissions", response_model=List[SessionResponse])
 def get_my_submissions(

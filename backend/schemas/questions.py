@@ -5,6 +5,7 @@ class QuestionBase(BaseModel):
     question_text: str
     question_type: str
     choice: List[str]  # e.g. ["A", "B", "C", "D"] or something similar
+    points: int = 1
 
 class QuestionCreate(QuestionBase):
     correct_choice: str
@@ -12,6 +13,7 @@ class QuestionCreate(QuestionBase):
 class QuestionResponse(QuestionBase):
     id: int
     exam_id: int
+
     
     class Config:
         from_attributes = True

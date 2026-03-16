@@ -23,6 +23,10 @@ from routers import session as r_session, events as r_events, streaming
 # Create DB tables on startup
 create_tables()
 
+from fastapi import Request
+from fastapi.responses import JSONResponse
+import traceback
+
 app = FastAPI(
     title="Horas Demo API",
     description="The AI Proctoring Exam Platform - Student Cycle & Live Monitoring",
@@ -30,6 +34,19 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc",
 )
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    with open("error.log", "a") as f:
+        f.write(f"\n--- {datetime.now()} ---\n")
+        f.write(traceback.format_exc())
+    return JSONResponse(
+        status_code=500,
+        content={"message": "Internal Server Error", "detail": str(exc)},
+    )
+
+from datetime import datetime
+
 
 app.add_middleware(
     CORSMiddleware,
