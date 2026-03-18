@@ -1,0 +1,95 @@
+#  INSTALL ORDER — follow exactly to avoid conflicts:
+#
+#   Step 1: Install PyTorch with CUDA (run setup_cuda.bat, or manually):
+#           pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+#
+#   Step 2: Install CTranslate2 before faster-whisper (avoids binary conflict):
+#           pip install ctranslate2>=4.0.0
+#      
+#   Step 3: إختار فيرجن ميديابايب حسب إلي شغال معاك :
+#           - mediapipe>=0.10.9,<0.11.0   ( Saif verison)
+#           - mediapipe>=0.10.14          ( Ali verison)
+#      
+#   Step 4: pip install -r requirements.txt
+
+
+# Core framework
+fastapi==0.135.1
+starlette==0.52.1
+python-multipart==0.0.22
+
+# ASGI server
+uvicorn==0.41.0
+
+# Data validation (Pydantic v2)
+pydantic==2.12.5
+pydantic-settings==2.13.1
+
+# Database ORM & PostgreSQL Driver
+SQLAlchemy==2.0.48
+psycopg2-binary==2.9.11
+
+# JWT Authentication & Password Hashing
+PyJWT==2.12.1
+bcrypt==5.0.0
+
+# Google OAuth2 / Session Management
+Authlib==1.4.1
+itsdangerous==2.2.0
+
+# HTTP requests & clients (Async and Sync)
+httpx==0.28.1
+httpcore==1.0.9
+requests==2.32.5
+
+# Async support
+anyio==4.12.1
+sniffio==1.3.1
+
+# WebSockets
+websockets==16.0
+
+# File watching for development (--reload)
+watchfiles==1.1.1
+
+# Type annotation support
+annotated-types==0.7.0
+typing_extensions==4.15.0
+
+# Network utilities, DNS, and encoding
+certifi==2026.2.25
+h11==0.16.0
+idna==3.11
+charset_normalizer==3.4.6
+
+# Settings source handling
+python-dotenv==1.2.2
+
+# Command line interface utilities
+click==8.3.1
+
+# ─────────────────────────── AI ENGINE / MEDIA & UTILITIES ───────────────────────────
+
+numpy>=1.24.0,<2.0.0
+
+# Vision & Image Processing
+opencv-python>=4.8.0,<4.11.0
+
+# mediapipe==0.10.14  ( عاملة مشاكل )
+
+# Object Detection & Facial Recognition Models
+ultralytics>=8.2.0
+deepface>=0.0.93
+
+# TensorFlow & Keras Backend Ecosystem
+tensorflow>=2.13.0,<2.16.0
+tensorflow-hub>=0.14.0,<0.17.0
+tf-keras>=2.15.0
+
+# Speech Recognition & General Machine Learning
+faster-whisper>=1.0.0
+scikit-learn>=1.3.0
+
+# Audio processing & PDF Document Generation
+sounddevice>=0.4.6
+reportlab>=4.0.0
