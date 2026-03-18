@@ -9,7 +9,7 @@ from core.database import get_db
 from core.security import verify_password, create_token, hash_password
 from core.config import settings
 from schemas.auth import UserCreate, UserResponse, Token
-import crud
+from core import crud
 
 # ─── OAuth2 Client Setup ───────────────────────────────────────────────────────
 starlette_config = StarletteConfig(environ={

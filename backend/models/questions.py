@@ -12,6 +12,8 @@ class Question(Base):
     question_type= Column(String, nullable=False)  # Leave as string so we can include other question types in the future
     choice= Column(JSON, nullable=False) # 4 choices for each MCQ
     correct_choice= Column(String, nullable=False)
+    points = Column(Integer, nullable=False, default=1)
+
 
     # belongs to (N:1): Multiple Questions belong to one exams record
     exam = relationship("Exam", back_populates="questions")

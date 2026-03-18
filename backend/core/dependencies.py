@@ -6,7 +6,7 @@ import jwt
 from core.database import get_db
 from core.config import settings
 from schemas.auth import TokenData
-import crud
+from . import crud
 
 # tokenUrl must match the OAuth2 /token endpoint for the Swagger Authorize button to work
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/token")
@@ -33,3 +33,20 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
         raise credentials_exception
         
     return user
+
+def get_current_teacher(current_user = Depends(get_current_user)):
+    if current_user.role != "teacher":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="The user does not have enough privileges (Teacher role required)."
+        )
+    return current_user
+
+def get_current_student(current_user = Depends(get_current_user)):
+    if current_user.role != "student":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="The user does not have enough privileges (Student role required)."
+        )
+    return current_user
+

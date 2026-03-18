@@ -33,7 +33,7 @@
                         ],
                         "body": {
                             "mode": "raw",
-                            "raw": "{\n  \"email\": \"mohamed@example.com\",\n  \"full_name\": \"Mohamed Ahmed\",\n  \"role\": \"student\",\n  \"password\": \"strongpassword123\"\n}",
+                            "raw": "{\n  \"email\": \"teacher@example.com\",\n  \"full_name\": \"Professor X\",\n  \"role\": \"teacher\",\n  \"password\": \"strongpassword123\"\n}",
                             "options": {
                                 "raw": {
                                     "language": "json"
@@ -51,7 +51,7 @@
                                 "register"
                             ]
                         },
-                        "description": "Create a new user account.\n\n**Body (JSON):**\n- `email` — must be unique\n- `full_name` — display name\n- `role` — `student` or `admin` (defaults to `student`)\n- `password` — plain text, will be hashed server-side"
+                        "description": "Create a new user account.\n\n**Body (JSON):**\n- `email` — must be unique\n- `full_name` — display name\n- `role` — `student` or `teacher` \n- `password` — plain text, will be hashed server-side"
                     },
                     "response": []
                 },
@@ -85,7 +85,7 @@
                             "urlencoded": [
                                 {
                                     "key": "username",
-                                    "value": "mohamed@example.com",
+                                    "value": "teacher@example.com",
                                     "description": "Your email address",
                                     "type": "text"
                                 },
@@ -110,55 +110,137 @@
                         "description": "Login with email and password.\n\nThe JWT Bearer token is **automatically saved** to `{{jwt_token}}` for use in all protected requests."
                     },
                     "response": []
-                },
+                }
+            ]
+        },
+        {
+            "name": "2. Teacher - Exam Management",
+            "item": [
                 {
-                    "name": "Login with Google (Open in Browser)",
+                    "name": "Create Exam",
                     "request": {
-                        "method": "GET",
-                        "header": [],
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{jwt_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"title\": \"Python Fundamentals\",\n  \"description\": \"Basic Python questions for beginners\",\n  \"access_code\": \"PY101\",\n  \"duration_minutes\": 45\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
                         "url": {
-                            "raw": "{{base_url}}/api/auth/google",
+                            "raw": "{{base_url}}/api/exams/",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
                                 "api",
-                                "auth",
-                                "google"
+                                "exams",
+                                ""
                             ]
                         },
-                        "description": "⚠️ **Must be opened in a real browser — not Postman!**\n\nPostman cannot handle browser-based OAuth2 redirects.\n\n**Flow:**\n1. Open `http://127.0.0.1:8000/api/auth/google` in your browser\n2. You are redirected to Google's login page\n3. After signing in, Google redirects to `/api/auth/google/callback`\n4. The backend issues a JWT and redirects you to: `http://localhost:5173/auth/callback?token=<your_jwt>`\n5. Your frontend reads the token from the URL and stores it\n\n**Setup needed:**\n- Add your `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` to the `.env` file\n- Register `http://127.0.0.1:8000/api/auth/google/callback` as an authorized redirect URI in Google Cloud Console"
+                        "description": "Teacher only. Create a new exam."
                     },
                     "response": []
                 },
                 {
-                    "name": "Google OAuth2 Callback (Internal — Do Not Call Manually)",
+                    "name": "Add Question to Exam",
                     "request": {
-                        "method": "GET",
-                        "header": [],
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{jwt_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"question_text\": \"What is the result of 2 + 2?\",\n  \"question_type\": \"MCQ\",\n  \"choice\": [\"2\", \"3\", \"4\", \"5\"],\n  \"correct_choice\": \"4\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
                         "url": {
-                            "raw": "{{base_url}}/api/auth/google/callback",
+                            "raw": "{{base_url}}/api/questions/1",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
                                 "api",
-                                "auth",
-                                "google",
-                                "callback"
+                                "questions",
+                                "1"
                             ]
                         },
-                        "description": "🔒 **This endpoint is called automatically by Google after the user approves access.**\n\nDo NOT call this manually. Google sends a `code` query parameter here after login.\n\nThe backend then:\n1. Exchanges the `code` for a Google access token\n2. Fetches the user's email & name from Google\n3. Auto-creates the user in the database if they don't exist\n4. Issues a JWT and redirects to the frontend"
+                        "description": "Teacher only. Add a question to an exam (ID 1)."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Get Exam Questions (Teacher View)",
+                    "request": {
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{jwt_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{base_url}}/api/questions/1",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "questions",
+                                "1"
+                            ]
+                        },
+                        "description": "Teacher view includes correct choices."
                     },
                     "response": []
                 }
             ]
         },
         {
-            "name": "2. Users (Protected)",
+            "name": "3. Student - Exam Cycle",
             "item": [
                 {
-                    "name": "Get All Users",
+                    "name": "List Available Exams",
                     "request": {
                         "auth": {
                             "type": "bearer",
@@ -173,22 +255,21 @@
                         "method": "GET",
                         "header": [],
                         "url": {
-                            "raw": "{{base_url}}/api/users/",
+                            "raw": "{{base_url}}/api/exams/",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
                                 "api",
-                                "users",
+                                "exams",
                                 ""
                             ]
-                        },
-                        "description": "Get a list of all registered users with full data.\n\n**Requires:** Bearer token from Login or Google OAuth2."
+                        }
                     },
                     "response": []
                 },
                 {
-                    "name": "Get Current User (Me)",
+                    "name": "Enroll in Exam",
                     "request": {
                         "auth": {
                             "type": "bearer",
@@ -200,50 +281,125 @@
                                 }
                             ]
                         },
-                        "method": "GET",
+                        "method": "POST",
                         "header": [],
                         "url": {
-                            "raw": "{{base_url}}/api/users/me",
+                            "raw": "{{base_url}}/api/sessions/enroll/1",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
                                 "api",
-                                "users",
-                                "me"
-                            ]
-                        },
-                        "description": "Get the profile of the currently authenticated user.\n\n**Requires:** Bearer token from Login or Google OAuth2."
-                    },
-                    "response": []
-                },
-                {
-                    "name": "Get User by ID",
-                    "request": {
-                        "auth": {
-                            "type": "bearer",
-                            "bearer": [
-                                {
-                                    "key": "token",
-                                    "value": "{{jwt_token}}",
-                                    "type": "string"
-                                }
-                            ]
-                        },
-                        "method": "GET",
-                        "header": [],
-                        "url": {
-                            "raw": "{{base_url}}/api/users/1",
-                            "host": [
-                                "{{base_url}}"
-                            ],
-                            "path": [
-                                "api",
-                                "users",
+                                "sessions",
+                                "enroll",
                                 "1"
                             ]
                         },
-                        "description": "Get a specific user by their numeric ID.\n\nChange `1` in the URL to the desired user ID.\n\n**Requires:** Bearer token from Login or Google OAuth2."
+                        "description": "Student enrolls in exam ID 1."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Get Questions (Student View)",
+                    "request": {
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{jwt_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{base_url}}/api/questions/1",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "questions",
+                                "1"
+                            ]
+                        },
+                        "description": "Student view excludes correct choices."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Submit Exam",
+                    "request": {
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{jwt_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"answers\": {\n    \"1\": \"4\"\n  }\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/sessions/1/submit",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "sessions",
+                                "1",
+                                "submit"
+                            ]
+                        },
+                        "description": "Submit answers and get score. Format: {\"answers\": {\"question_id\": \"choice\"}}"
+                    },
+                    "response": []
+                },
+                {
+                    "name": "My Submissions History",
+                    "request": {
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{jwt_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{base_url}}/api/sessions/my-submissions",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "sessions",
+                                "my-submissions"
+                            ]
+                        }
                     },
                     "response": []
                 }

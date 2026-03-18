@@ -21,3 +21,4 @@ class User(Base):
     # Query Example: `my_user.sessions` to get all exams they've taken!
     # "back_populates": the Session model will have a variable called "user" pointing back here.
     sessions = relationship("Session", back_populates="user")
+    exams = relationship("Exam", back_populates="teacher")

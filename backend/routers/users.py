@@ -5,7 +5,7 @@ from typing import List
 from core.database import get_db
 from core.dependencies import get_current_user
 from schemas.auth import UserResponse
-import crud
+from core import crud
 
 router = APIRouter(
     prefix="/users",
