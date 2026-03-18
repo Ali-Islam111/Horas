@@ -13,12 +13,13 @@ ENV
 __pycache__/
 *.py[cod]
 *.pyo
+*$py.class  
 
 # SQLite database file (auto-generated, do not commit)
 *.db
 *.db-journal
 *.db-wal
-
+*.sqlite3
 
 # IDE / Editor
 .vscode/

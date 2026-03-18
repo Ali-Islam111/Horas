@@ -40,6 +40,8 @@ class Settings(BaseSettings):
 
     def get_allowed_origins(self) -> List[str]:
         """Returns ALLOWED_ORIGINS as a Python list. Use this in main.py."""
+
+        # If the ALLOWED_ORIGINS from .env is wrong, allow all origins to avoid a CORS error.
         if not self.ALLOWED_ORIGINS:
             return ["*"]
         return [origin.strip() for origin in self.ALLOWED_ORIGINS.split(",") if origin.strip()]
