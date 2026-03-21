@@ -1,5 +1,6 @@
 import os
 import sys
+from datetime import datetime
 
 # Ensures 'core', 'models', 'routers' are found regardless of run directory
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -45,7 +46,6 @@ async def global_exception_handler(request: Request, exc: Exception):
         content={"message": "Internal Server Error", "detail": str(exc)},
     )
 
-from datetime import datetime
 
 
 app.add_middleware(

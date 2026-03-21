@@ -7,6 +7,7 @@ from core.database import get_db
 from core.dependencies import get_current_user, get_current_student
 from core import crud
 from schemas.session import SessionCreate, SessionResponse, StudentAnswerSubmit, SubmissionResult
+from services.exam_scoring import ScoringEngine
 
 router = APIRouter(
     prefix="/sessions",
@@ -35,7 +36,6 @@ def enroll_exam(
     session_in = SessionCreate(user_id=current_student.id, exam_id=exam_id)
     return crud.create_session(db, session_in=session_in)
 
-from services.exam_scoring import ScoringEngine
 
 
 

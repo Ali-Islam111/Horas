@@ -6,7 +6,7 @@ router = APIRouter(
     tags=["Live Streaming & WebSockets"]
 )
 
-@router.websocket("/ws/sessions/{s_id}")
+@router.websocket("/sessions/{s_id}")
 async def proctoring_stream(websocket: WebSocket, s_id: int):
     """
     Step 5 (Simultaneous AI): The WebSocket endpoint that stays open for the entire exam.

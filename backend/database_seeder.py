@@ -21,7 +21,7 @@ def seed_database():
             return
 
         print("🌱 Seeding Users...")
-        # 1. Create a default admin/proctor
+        # 1. Create a default admin/proctor (This will act as our Teacher)
         admin_user = User(
             full_name="Admin Proctor",
             email="admin@system.com",
@@ -44,19 +44,19 @@ def seed_database():
 
         print("📝 Seeding Exam and Questions...")
         # 3. Create a sample exam
-        # FIX: Added the required 'description' field!
+        # FIX: Added the required 'teacher_id' field, linking it to our admin_user
         sample_exam = Exam(
             title="Introduction to Data Structures",
             description="A foundational exam covering basic data structures like stacks, queues, and trees.",
             access_code="DEMO123", 
             duration_minutes=120,
+            teacher_id=admin_user.id  # <-- Newly added field!
         )
         db.add(sample_exam)
         db.commit()
         db.refresh(sample_exam)
 
         # 4. Add sample questions to the exam
-        # FIX: Updated 'choice' and 'correct_choice' to match your models/questions.py!
         q1 = Question(
             exam_id=sample_exam.id,
             question_text="Explain the time complexity of QuickSort.",
@@ -91,6 +91,7 @@ def seed_database():
         print("✅ Database successfully seeded with initial test data!")
         print(f"👉 Use Session ID: {active_session.id} for your WebSocket tests.")
         print(f"👉 Student Name: {test_student.full_name}")
+        print(f"👉 Teacher Name: {admin_user.full_name}")
         print("=====================================================")
 
     except Exception as e:

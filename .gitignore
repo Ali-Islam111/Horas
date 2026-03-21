@@ -25,6 +25,10 @@ __pycache__/
 .vscode/
 .idea/
 
+# Postman local workspace (auto-generated, do not commit)
+.postman/
+postman/
+
 # OS Files
 .DS_Store
 Thumbs.db
