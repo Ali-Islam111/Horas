@@ -9,6 +9,10 @@ from core import crud
 from schemas.session import SessionCreate, SessionResponse, StudentAnswerSubmit, SubmissionResult
 from services.exam_scoring import ScoringEngine
 
+from models.events import Event
+from schemas.events import EventOut
+
+
 router = APIRouter(
     prefix="/sessions",
     tags=["Sessions"],
@@ -90,3 +94,21 @@ def get_my_submissions(
     return crud.get_student_submissions(db, user_id=current_student.id)
 
 
+
+@router.get("/{session_id}/events", response_model=List[EventOut])
+def get_session_events(s_id: int, db: Session = Depends(get_db)):
+    """
+    Step 8 (View Logs): Fetches all cheating logs for a specific session to prove the AI worked.
+    Returns the logs ordered by the exact time they happened.
+    """
+    # Query the events table, filter by the session ID, and sort by timestamp
+    events = (
+        db.query(Event)
+        .filter(Event.session_id == s_id)
+        .order_by(Event.timestamp.asc())
+        .all()
+    )
+    
+    # FastAPI will automatically pass this list of raw database rows through the 
+    # EventOut schema, formatting it perfectly for the frontend dashboard!
+    return events

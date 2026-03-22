@@ -13,7 +13,7 @@ router = APIRouter(
     tags=["Proctoring Events"]
 )
 
-@router.post("/events/log", response_model=EventOut, status_code=status.HTTP_201_CREATED)
+@router.post("/log", response_model=EventOut, status_code=status.HTTP_201_CREATED)
 def log_event(event_in: EventCreate, db: Session = Depends(get_db)):
     """
     Step 5 (Simultaneous AI): The AI Engine calls this endpoint whenever it detects an anomaly.
@@ -33,21 +33,3 @@ def log_event(event_in: EventCreate, db: Session = Depends(get_db)):
     db.refresh(new_event)
     return new_event
 
-
-@router.get("/sessions/{s_id}/events", response_model=List[EventOut])
-def get_session_events(s_id: int, db: Session = Depends(get_db)):
-    """
-    Step 8 (View Logs): Fetches all cheating logs for a specific session to prove the AI worked.
-    Returns the logs ordered by the exact time they happened.
-    """
-    # Query the events table, filter by the session ID, and sort by timestamp
-    events = (
-        db.query(Event)
-        .filter(Event.session_id == s_id)
-        .order_by(Event.timestamp.asc())
-        .all()
-    )
-    
-    # FastAPI will automatically pass this list of raw database rows through the 
-    # EventOut schema, formatting it perfectly for the frontend dashboard!
-    return events
