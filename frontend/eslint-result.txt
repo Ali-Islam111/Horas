@@ -1,0 +1,9 @@
+[0m[0m
+[0m[4mD:\A gradution Project\frount\my-react-app\src\components\ExamReportScreen.jsx[24m[0m
+[0m  [2m261:64[22m  [31merror[39m  'index' is defined but never used  [2mno-unused-vars[22m[0m
+[0m[0m
+[0m[4mD:\A gradution Project\frount\my-react-app\src\components\ExaminerDashboard.jsx[24m[0m
+[0m  [2m282:40[22m  [31merror[39m  'index' is defined but never used  [2mno-unused-vars[22m[0m
+[0m[0m
+[0m[31m[1m✖ 2 problems (2 errors, 0 warnings)[22m[39m[0m
+[0m[31m[1m[22m[39m[0m

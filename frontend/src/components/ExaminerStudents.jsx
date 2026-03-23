@@ -1,0 +1,282 @@
+import { useState } from 'react'
+import logo from '../../assets/Untitled (1).png'
+import { useLanguage } from '../contexts/LanguageContext'
+
+function ExaminerStudents({ onNavigate }) {
+  const { t, language, toggleLanguage } = useLanguage()
+  const [searchQuery, setSearchQuery] = useState('')
+  const [filterStatus, setFilterStatus] = useState('all')
+
+  // Mock student data
+  const students = [
+    { id: 1, name: 'Ahmed Ali', email: 'ahmed.ali@university.edu', studentId: 'ST001', examsCompleted: 12, averageScore: 85, status: 'active', joinDate: '2024-09-01' },
+    { id: 2, name: 'Sara Mohamed', email: 'sara.mohamed@university.edu', studentId: 'ST002', examsCompleted: 15, averageScore: 92, status: 'active', joinDate: '2024-09-01' },
+    { id: 3, name: 'Youssef Hassan', email: 'youssef.hassan@university.edu', studentId: 'ST003', examsCompleted: 10, averageScore: 78, status: 'active', joinDate: '2024-09-05' },
+    { id: 4, name: 'Mariam Adel', email: 'mariam.adel@university.edu', studentId: 'ST004', examsCompleted: 14, averageScore: 88, status: 'active', joinDate: '2024-09-03' },
+    { id: 5, name: 'Omar Hassan', email: 'omar.hassan@university.edu', studentId: 'ST005', examsCompleted: 8, averageScore: 75, status: 'inactive', joinDate: '2024-09-10' },
+    { id: 6, name: 'Fatima Ibrahim', email: 'fatima.ibrahim@university.edu', studentId: 'ST006', examsCompleted: 11, averageScore: 90, status: 'active', joinDate: '2024-09-02' },
+    { id: 7, name: 'Mohamed Khaled', email: 'mohamed.khaled@university.edu', studentId: 'ST007', examsCompleted: 9, averageScore: 82, status: 'active', joinDate: '2024-09-07' },
+    { id: 8, name: 'Nour Sayed', email: 'nour.sayed@university.edu', studentId: 'ST008', examsCompleted: 13, averageScore: 87, status: 'active', joinDate: '2024-09-04' }
+  ]
+
+  const filteredStudents = students.filter(student => {
+    const matchesSearch = student.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      student.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      student.studentId.toLowerCase().includes(searchQuery.toLowerCase())
+    const matchesStatus = filterStatus === 'all' || student.status === filterStatus
+    return matchesSearch && matchesStatus
+  })
+
+  const stats = [
+    { label: 'Total Students', value: students.length },
+    { label: 'Active Students', value: students.filter(s => s.status === 'active').length },
+    { label: 'Inactive Students', value: students.filter(s => s.status === 'inactive').length },
+    { label: 'Avg Score', value: `${Math.round(students.reduce((sum, s) => sum + s.averageScore, 0) / students.length)}%` }
+  ]
+
+  return (
+    <div className="min-h-screen bg-[#030014] text-slate-200 overflow-hidden relative selection:bg-purple-500/30">
+
+      {/* Background Grid Pattern & Noise */}
+      <div className="fixed inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 pointer-events-none mix-blend-soft-light z-0"></div>
+      <div className="fixed inset-0 bg-[linear-gradient(to_right,#4f4f4f2e_1px,transparent_1px),linear-gradient(to_bottom,#4f4f4f2e_1px,transparent_1px)] bg-[size:14px_24px] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_0%,#000_70%,transparent_100%)] pointer-events-none z-0"></div>
+
+      {/* Ambient Glows */}
+      <div className="fixed top-[-10%] right-[-5%] w-[500px] h-[500px] rounded-full bg-purple-600/20 blur-[120px] pointer-events-none z-0" />
+      <div className="fixed bottom-[-10%] left-[-10%] w-[600px] h-[600px] rounded-full bg-cyan-600/20 blur-[150px] pointer-events-none z-0" />
+
+      {/* Top Header */}
+      <header className="relative z-50 border-b border-white/5 bg-slate-950/50 backdrop-blur-2xl px-6 py-4">
+        <div className="max-w-7xl mx-auto flex items-center justify-between">
+          {/* Left - Logo and Title */}
+          <div className="flex items-center gap-4">
+            <div className="relative w-12 h-12 rounded-xl overflow-hidden p-[1px] bg-gradient-to-br from-purple-500 via-cyan-500 to-emerald-500 shadow-[0_0_20px_-5px_rgba(168,85,247,0.4)]">
+              <div className="w-full h-full bg-slate-950 rounded-[11px] flex items-center justify-center p-2">
+                <img src={logo} alt="Horus" className="w-full h-full object-contain drop-shadow-lg" />
+              </div>
+            </div>
+            <div>
+              <h1 className="text-white text-xl font-bold tracking-tight">{t('examiner.dashboard.nav.students')}</h1>
+              <p className="text-slate-400 text-sm">{t('examiner.students.welcomeDesc')}</p>
+            </div>
+          </div>
+
+          {/* Right - Actions */}
+          <div className="flex items-center gap-4">
+            {/* Language Toggle Button */}
+            <button
+              onClick={toggleLanguage}
+              className="px-4 py-2 rounded-xl text-sm font-bold uppercase tracking-widest text-slate-300 hover:text-white transition-colors bg-white/5 hover:bg-white/10 border border-white/10 backdrop-blur-md hidden sm:block"
+            >
+              {language === 'en' ? 'عربي' : 'English'}
+            </button>
+            {/* Create Exam Button */}
+            <button
+              onClick={() => onNavigate('createExam')}
+              className="relative group px-5 py-2.5 rounded-xl font-semibold text-sm transition-all duration-300 flex items-center gap-2 overflow-hidden shadow-[0_0_20px_rgba(168,85,247,0.2)] hover:shadow-[0_0_30px_rgba(168,85,247,0.4)] hover:-translate-y-0.5"
+            >
+              <div className="absolute inset-0 bg-gradient-to-r from-purple-600 to-cyan-600 opacity-90 group-hover:opacity-100 transition-opacity"></div>
+              <svg className="w-4 h-4 relative z-10 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="12" y1="5" x2="12" y2="19" />
+                <line x1="5" y1="12" x2="19" y2="12" />
+              </svg>
+              <span className="relative z-10 text-white">{t('examiner.dashboard.createExam')}</span>
+            </button>
+
+            {/* Logout Button */}
+            <button
+              onClick={() => onNavigate('login')}
+              className="px-5 py-2.5 rounded-xl font-semibold text-sm transition-all duration-300 flex items-center gap-2 border border-white/10 bg-white/5 hover:bg-white/10 hover:border-white/20 text-slate-300 hover:text-white hover:-translate-y-0.5"
+            >
+              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                <polyline points="16 17 21 12 16 7" />
+                <line x1="21" y1="12" x2="9" y2="12" />
+              </svg>
+              {t('examiner.dashboard.logout')}
+            </button>
+          </div>
+        </div>
+      </header>
+
+      {/* Navigation Tabs */}
+      <nav className="relative z-40 border-b border-white/5 bg-white/[0.02] backdrop-blur-xl px-6 py-0">
+        <div className="max-w-7xl mx-auto flex items-center gap-8 overflow-x-auto no-scrollbar">
+          {[
+            { id: 'examiner', label: t('examiner.dashboard.nav.overview'), icon: <path d="M18 20V10M12 20V4M6 20v-6" /> },
+            { id: 'examinerStudents', label: t('examiner.dashboard.nav.students'), icon: <><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></> },
+            { id: 'examinerExam', label: t('examiner.dashboard.nav.exams'), icon: <><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" /><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" /></> },
+            { id: 'report', label: t('examiner.dashboard.nav.reports'), icon: <><polyline points="23 6 13.5 15.5 8.5 10.5 1 18" /><polyline points="17 6 23 6 23 12" /></> },
+            { id: 'examinerAlerts', label: t('examiner.dashboard.nav.alerts'), icon: <><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" /><line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" /></> },
+            { id: 'examinerSettings', label: t('examiner.dashboard.nav.settings'), icon: <><circle cx="12" cy="12" r="3" /><path d="M12 1v6m0 6v6" /></> },
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => onNavigate(tab.id)}
+              className={`flex items-center gap-2 py-4 text-sm font-semibold transition-colors relative ${tab.id === 'examinerStudents' ? 'text-purple-400' : 'text-slate-400 hover:text-slate-200'}`}
+            >
+              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                {tab.icon}
+              </svg>
+              {tab.label}
+              {tab.id === 'examinerStudents' && (
+                <div className="absolute bottom-0 left-0 w-full h-[2px] bg-gradient-to-r from-purple-500 to-cyan-500 rounded-t-full shadow-[0_-2px_10px_rgba(168,85,247,0.5)]"></div>
+              )}
+            </button>
+          ))}
+        </div>
+      </nav>
+
+      {/* Main Content */}
+      <main className="relative z-10 p-6 max-w-7xl mx-auto space-y-6">
+
+        {/* Stats Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
+          {stats.map((stat, i) => (
+            <div key={i} className="group relative rounded-2xl border border-white/5 bg-white/5 p-6 backdrop-blur-md hover:bg-white/[0.07] hover:border-purple-500/30 transition-all duration-500 overflow-hidden">
+              <div className={`absolute right-0 top-0 w-24 h-24 bg-purple-500/10 blur-[30px] rounded-full translate-x-1/2 -translate-y-1/2 group-hover:bg-purple-500/20 transition-all`}></div> {/* This div's bg color needs to be dynamic based on stat.color if desired */}
+              <h3 className="text-slate-400 text-sm font-semibold mb-2">{t(`examiner.students.stats.${stat.label.toLowerCase().replace(' ', '') === 'totalstudents' ? 'total' : stat.label.toLowerCase().replace(' ', '') === 'activestudents' ? 'active' : stat.label.toLowerCase().replace(' ', '') === 'inactivestudents' ? 'inactive' : 'avgScore'}`)}</h3>
+              <p className="text-white text-3xl font-bold">{stat.value}</p>
+            </div>
+          ))}
+        </div>
+
+        {/* Search and Filter */}
+        <div className="rounded-2xl border border-white/5 bg-white/5 p-5 backdrop-blur-md mb-6 flex flex-col md:flex-row gap-4 items-center justify-between">
+          <div className="w-full md:w-1/2 relative">
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder={t('examiner.students.searchPlaceholder')}
+              className="w-full px-4 py-2.5 pl-11 rounded-xl bg-slate-950/50 border border-white/10 text-white placeholder-slate-400 text-sm focus:outline-none focus:border-purple-500/50 focus:ring-1 focus:ring-purple-500/50 transition-all"
+            />
+            <svg className="w-5 h-5 text-slate-400 absolute left-3 top-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="11" cy="11" r="8" />
+              <path d="m21 21-4.35-4.35" />
+            </svg>
+          </div>
+
+          <div className="flex items-center gap-4">
+            <button
+              onClick={() => onNavigate('proctoringMonitor')}
+              className="px-4 py-2 rounded-xl text-sm font-semibold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 hover:bg-emerald-500/20 transition-colors flex items-center gap-2"
+            >
+              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <circle cx="12" cy="12" r="3" />
+                <path d="M12 5c-7 0-10 7-10 7s3 7 10 7 10-7 10-7-3-7-10-7z" />
+              </svg>
+              {t('examiner.students.liveMonitor')}
+            </button>
+            <div className="flex bg-slate-950/50 border border-white/10 rounded-xl p-1">
+              <button
+                onClick={() => setFilterStatus('all')}
+                className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${filterStatus === 'all' ? 'bg-white/10 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'}`}
+              >
+                {t('examiner.students.filters.all')}
+              </button>
+              <button
+                onClick={() => setFilterStatus('active')}
+                className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${filterStatus === 'active' ? 'bg-emerald-500/20 text-emerald-300 shadow-sm' : 'text-slate-400 hover:text-slate-200'}`}
+              >
+                {t('examiner.students.filters.active')}
+              </button>
+              <button
+                onClick={() => setFilterStatus('inactive')}
+                className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${filterStatus === 'inactive' ? 'bg-orange-500/20 text-orange-300 shadow-sm' : 'text-slate-400 hover:text-slate-200'}`}
+              >
+                {t('examiner.students.filters.inactive')}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Students Table */}
+        <div className="rounded-2xl border border-white/5 bg-white/5 backdrop-blur-md overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="border-b border-white/10 bg-white/[0.02]">
+                  <th className="text-slate-300 text-xs font-semibold uppercase tracking-wider py-4 px-6">{t('examiner.students.table.studentId')}</th>
+                  <th className="text-slate-300 text-xs font-semibold uppercase tracking-wider py-4 px-6">{t('examiner.students.table.name')}</th>
+                  <th className="text-slate-300 text-xs font-semibold uppercase tracking-wider py-4 px-6">{t('examiner.students.table.email')}</th>
+                  <th className="text-center text-slate-300 text-xs font-semibold uppercase tracking-wider py-4 px-6">{t('examiner.students.table.exams')}</th>
+                  <th className="text-center text-slate-300 text-xs font-semibold uppercase tracking-wider py-4 px-6">{t('examiner.students.table.avgScore')}</th>
+                  <th className="text-center text-slate-300 text-xs font-semibold uppercase tracking-wider py-4 px-6">{t('examiner.students.table.status')}</th>
+                  <th className="text-center text-slate-300 text-xs font-semibold uppercase tracking-wider py-4 px-6">{t('examiner.students.table.joinDate')}</th>
+                  <th className="text-center text-slate-300 text-xs font-semibold uppercase tracking-wider py-4 px-6">{t('examiner.students.table.actions')}</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/5">
+                {filteredStudents.map((student) => (
+                  <tr key={student.id} className="hover:bg-white/[0.02] transition-colors group">
+                    <td className="py-4 px-6">
+                      <span className="font-mono text-xs text-purple-400 bg-purple-500/10 px-2 py-1 rounded-md border border-purple-500/20">{student.studentId}</span>
+                    </td>
+                    <td className="py-4 px-6 text-sm font-medium text-white">{student.name}</td>
+                    <td className="py-4 px-6 text-sm text-slate-400">{student.email}</td>
+                    <td className="py-4 px-6 text-sm text-slate-300 text-center">{student.examsCompleted}</td>
+                    <td className="py-4 px-6 text-center">
+                      <span className={`inline-flex items-center justify-center px-2 py-1 rounded-md text-xs font-bold border ${student.averageScore >= 85 ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' :
+                        student.averageScore >= 70 ? 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20' :
+                          'bg-orange-500/10 text-orange-400 border-orange-500/20'
+                        }`}>
+                        {student.averageScore}%
+                      </span>
+                    </td>
+                    <td className="py-4 px-6 text-center">
+                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border ${student.status === 'active' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-slate-500/10 text-slate-400 border-slate-500/20'
+                        }`}>
+                        <span className={`w-1.5 h-1.5 rounded-full ${student.status === 'active' ? 'bg-emerald-400' : 'bg-slate-400'}`}></span>
+                        {student.status === 'active' ? t('examiner.students.status.active') : t('examiner.students.status.inactive')}
+                      </span>
+                    </td>
+                    <td className="py-4 px-6 text-sm text-slate-400 text-center">{student.joinDate}</td>
+                    <td className="py-4 px-6">
+                      <div className="flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button className="p-1.5 rounded-lg bg-white/5 text-slate-300 hover:bg-cyan-500/10 hover:text-cyan-400 transition-colors" title="View Details">
+                          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                            <circle cx="12" cy="12" r="3" />
+                          </svg>
+                        </button>
+                        <button className="p-1.5 rounded-lg bg-white/5 text-slate-300 hover:bg-emerald-500/10 hover:text-emerald-400 transition-colors" title="Edit Student">
+                          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                          </svg>
+                        </button>
+                        <button className="p-1.5 rounded-lg bg-white/5 text-slate-300 hover:bg-red-500/10 hover:text-red-400 transition-colors" title="Remove Student">
+                          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <polyline points="3 6 5 6 21 6" />
+                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                          </svg>
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {filteredStudents.length === 0 && (
+            <div className="py-20 text-center">
+              <div className="w-20 h-20 mx-auto bg-white/5 rounded-full flex items-center justify-center mb-6">
+                <svg className="w-10 h-10 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                  <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                  <circle cx="9" cy="7" r="4" />
+                  <line x1="19" y1="8" x2="19" y2="14" />
+                  <line x1="22" y1="11" x2="16" y2="11" />
+                </svg>
+              </div>
+              <h3 className="text-xl font-bold text-white mb-2">{t('examiner.students.empty')}</h3>
+            </div>
+          )}
+        </div>
+      </main>
+    </div>
+  )
+}
+
+export default ExaminerStudents
