@@ -13,7 +13,7 @@ dist-ssr
 
 # Logs
 logs
-.log
+*.log
 npm-debug.log
 yarn-debug.log*
 yarn-error.log*
@@ -60,3 +60,10 @@ postman/
 *.njsproj
 *.sln
 *.sw?
+
+# Folders in the AI engine that are generated every session
+dataset/
+evidence/
+reference_faces/
+saved_models/
+session_reports/
