@@ -51,7 +51,7 @@ class ProctoringManager:
             }
 
             try:
-                api_url = "http://127.0.0.1:8000/events/log"
+                api_url = "http://127.0.0.1:8000/api/events/log"
                 response = requests.post(api_url, json=payload)
                 response.raise_for_status() 
             except Exception as e:
