@@ -41,7 +41,7 @@ export const API_ENDPOINTS = {
 
   // ── AI Proctoring (WebSocket + Events DB) ────────────────────────────────
   // WebSocket: student browser connects here to stream frames to the AI engine
-  PROCTOR_WS:      (sessionId) => `${WS_BASE_URL}/ws/proctor/${sessionId}`,
+  PROCTOR_WS:      (sessionId) => `${WS_BASE_URL}/ws/sessions/${sessionId}`,
 
   // Events: AI manager logs violations here; examiner reads them from here
   LOG_EVENT:       `${API_BASE_URL}/api/events/log`,
