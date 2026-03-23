@@ -595,22 +595,21 @@ class ProctoringSession:
 
     # ── Internal helpers ─────────────────────────────────────
 
-    def _handle_alert(self, source: str, event_type: str, severity: int):
+    def _handle_alert(self, record: dict):
         """Invoked by core.play_alert() on every logged event."""
         if self._on_alert is None:
             return
-        with self._lock:
-            latest = self._events[-1] if self._events else {}
+        
         try:
             self._on_alert({
                 "session_id":  self.session_id,
                 "student_id":  self.student_id,
-                "source":      source,
-                "event_type":  event_type,
-                "severity":    severity,
-                "timestamp":   latest.get("timestamp", ""),
-                "details":     latest.get("details", ""),
-                "screenshot":  latest.get("screenshot", ""),
+                "source":      record.get("source", ""),
+                "event_type":  record.get("event_type", ""),
+                "severity":    record.get("severity", 1),
+                "timestamp":   record.get("timestamp", ""),
+                "details":     record.get("details", ""),
+                "screenshot":  record.get("screenshot", ""),
             })
         except Exception as e:
             print(f"[Session {self.session_id}] on_alert callback error: {e}")

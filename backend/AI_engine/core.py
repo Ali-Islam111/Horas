@@ -25,23 +25,17 @@ _alert_hook = None
 
 def set_alert_hook(fn):
     """
-    Register a callable that receives (source, event_type, severity)
+    Register a callable that receives the full event record dict
     whenever an alert fires. Called from the web layer at startup.
-
-    Example (Flask-SocketIO):
-        from core import set_alert_hook
-        set_alert_hook(lambda src, evt, sev: socketio.emit(
-            'alert', {'source': src, 'event': evt, 'severity': sev}
-        ))
     """
     global _alert_hook
     _alert_hook = fn
 
-def play_alert(source: str = "", event_type: str = "", severity: int = 1):
+def play_alert(record: dict):
     """Fire the registered alert hook. No-op if none registered."""
     if _alert_hook:
         try:
-            _alert_hook(source, event_type, severity)
+            _alert_hook(record)
         except Exception as e:
             print(f"  [Alert] Hook error: {e}")
 
@@ -189,5 +183,5 @@ class EventLogger:
 
         print(f"  [ALERT][{source.upper()}] {event_type}  "
               f"{details.split(' | ')[0]}")
-        play_alert(source, event_type, severity)
+        play_alert(record)
         return snap
