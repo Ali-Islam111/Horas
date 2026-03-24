@@ -24,48 +24,47 @@ def seed_database():
 
         print("🌱 Seeding Users...")
         
-        # FIX: Generate a real bcrypt hash for the dummy password "password123"
+        # Generate a real bcrypt hash for the dummy password "password123"
         dummy_password = "password123"
         salt = bcrypt.gensalt()
         real_hashed_password = bcrypt.hashpw(dummy_password.encode('utf-8'), salt).decode('utf-8')
 
-        # 1. Create a default admin/proctor (This will act as our Teacher)
-        admin_user = User(
-            full_name="Admin Proctor",
-            email="admin@system.com",
-            password_hash=real_hashed_password,  # <-- Uses the real hash now
-            role="admin"
+        # 1. Create a default Teacher/Proctor
+        # FIX: Changed role from "admin" to "teacher" to match your dependencies.py
+        teacher_user = User(
+            full_name="Teacher Proctor",
+            email="teacher@system.com",
+            password_hash=real_hashed_password, 
+            role="teacher"  # <-- Fixed!
         )
         
         # 2. Create the Test Student
         test_student = User(
             full_name="Ahmed Hassan",  
             email="student@system.com",
-            password_hash=real_hashed_password,  # <-- Uses the real hash now
+            password_hash=real_hashed_password, 
             role="student"
         )
         
-        db.add_all([admin_user, test_student])
+        db.add_all([teacher_user, test_student])
         db.commit()
-        db.refresh(admin_user)
+        db.refresh(teacher_user)
         db.refresh(test_student)
 
         print("📝 Seeding Exam and Questions...")
         # 3. Create a sample exam
-        # FIX: Added the required 'teacher_id' field, linking it to our admin_user
         sample_exam = Exam(
             title="Introduction to Data Structures",
             description="A foundational exam covering basic data structures like stacks, queues, and trees.",
             access_code="DEMO123", 
             duration_minutes=120,
-            teacher_id=admin_user.id  # <-- Newly added field!
+            teacher_id=teacher_user.id  # <-- Linked to the new teacher_user
         )
         db.add(sample_exam)
         db.commit()
         db.refresh(sample_exam)
 
         # 4. Add sample questions to the exam
-        # FIX: Changed choice to a LIST and correct_choice to match a string in the list
         q1 = Question(
             exam_id=sample_exam.id,
             question_text="Explain the time complexity of QuickSort.",
@@ -74,7 +73,6 @@ def seed_database():
             correct_choice="O(n log n)"
         )
         
-        # FIX: Changed choice to a LIST and correct_choice to match a string in the list
         q2 = Question(
             exam_id=sample_exam.id,
             question_text="Which data structure uses LIFO?",
@@ -102,12 +100,12 @@ def seed_database():
         print("=====================================================")
         print("✅ Database successfully seeded with initial test data!")
         print("🔑 LOGIN CREDENTIALS:")
-        print(f"   Admin: admin@system.com / {dummy_password}")
+        print(f"   Teacher: teacher@system.com / {dummy_password}")
         print(f"   Student: student@system.com / {dummy_password}")
         print("-----------------------------------------------------")
         print(f"👉 Use Session ID: {active_session.id} for your WebSocket tests.")
         print(f"👉 Student Name: {test_student.full_name}")
-        print(f"👉 Teacher Name: {admin_user.full_name}")
+        print(f"👉 Teacher Name: {teacher_user.full_name}")
         print("=====================================================")
 
     except Exception as e:

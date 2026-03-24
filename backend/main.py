@@ -1,11 +1,13 @@
 import os
 import sys
+import traceback
 from datetime import datetime
 
 # Ensures 'core', 'models', 'routers' are found regardless of run directory
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 
@@ -23,10 +25,6 @@ from routers import session as r_session, events as r_events, streaming
 
 # Create DB tables on startup
 create_tables()
-
-from fastapi import Request
-from fastapi.responses import JSONResponse
-import traceback
 
 app = FastAPI(
     title="Horas Demo API",
