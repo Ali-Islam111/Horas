@@ -93,8 +93,6 @@ def get_my_submissions(
     """Student only: Get all their own exam submissions."""
     return crud.get_student_submissions(db, user_id=current_student.id)
 
-
-
 @router.get("/{session_id}/events", response_model=List[EventOut])
 def get_session_events(session_id: int, db: Session = Depends(get_db)):
     """
