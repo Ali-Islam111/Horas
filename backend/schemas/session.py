@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Dict, Optional, Any
+from typing import Dict, Literal, Optional, Any
 from datetime import datetime
 
 class StudentAnswerSubmit(BaseModel):
@@ -19,6 +19,7 @@ class SessionResponse(SessionBase):
     final_score: Optional[float]
     started_at: datetime
     submitted_at: Optional[datetime]
+    ai_ready_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True
@@ -27,3 +28,8 @@ class SubmissionResult(BaseModel):
     message: str
     score: float
     total_questions: int
+
+class AIStatusResponse(BaseModel):
+    session_id: int
+    status: Literal["waiting", "initializing", "ready", "failed"]
+

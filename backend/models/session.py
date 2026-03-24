@@ -19,6 +19,7 @@ class Session(Base):
 
     started_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     submitted_at = Column(DateTime, nullable=True)
+    ai_ready_at = Column(DateTime, nullable=True)  # NULL = AI never confirmed ready
 
     # Relationships: The "Many" side looking back at the "One" side.
     user = relationship("User", back_populates="sessions")

@@ -113,6 +113,7 @@ class ProctoringSession:
                  student_id:   str,
                  student_name: str       = "Student",
                  on_alert:     callable  = None,
+                 on_ready:     callable  = None,
                  session_id:   str       = None):
         """
         Parameters
@@ -123,6 +124,8 @@ class ProctoringSession:
                        Receives one dict — see API_CONTRACT.md §Alert Object.
                        Runs on the proctoring thread, keep it fast
                        (just put it in a queue or emit a socket event).
+        on_ready     : callback fired once when calibration finishes and
+                       active proctoring begins. Receives no arguments.
         session_id   : optional — supply to resume a previous session.
                        Omit to generate a new 8-char ID automatically.
         """
@@ -130,6 +133,7 @@ class ProctoringSession:
         self.student_name = student_name
         self.session_id   = (session_id or str(uuid.uuid4())[:8]).upper()
         self._on_alert    = on_alert
+        self._on_ready    = on_ready
 
         self._start_time  = None
         self._end_time    = None
@@ -396,6 +400,11 @@ class ProctoringSession:
             if self._state == "calibrating":
                 self._state = "active"
                 print(f"[Session {self.session_id}] Calibration done — proctoring active.")
+                if self._on_ready:
+                    try:
+                        self._on_ready()
+                    except Exception as e:
+                        print(f"[Session {self.session_id}] on_ready callback error: {e}")
 
             # ── Active proctoring ─────────────────────────────
             if run_mp and fres and fres.multi_face_landmarks:

@@ -2,6 +2,7 @@ import asyncio
 import requests
 import sys
 import os
+from datetime import datetime, timezone
 from fastapi import WebSocket
 
 # Import our database tools to fetch the real student!
@@ -31,6 +32,21 @@ if backend_core:
 class ProctoringManager:
     def __init__(self):
         self.active_sessions = {}
+        self._ready_sessions: set  = set()   # AI confirmed ready
+        self._failed_sessions: set = set()   # AI failed to start
+
+    def get_ai_status(self, session_id: str) -> str:
+        """
+        Returns the AI status for a given session.
+        Used by the HTTP fallback endpoint GET /sessions/{id}/ai-status
+        """
+        if session_id in self._ready_sessions:
+            return "ready"
+        if session_id in self._failed_sessions:
+            return "failed"
+        if session_id in self.active_sessions:
+            return "initializing"
+        return "waiting"
 
     async def connect(self, session_id: str, websocket: WebSocket):
         """
@@ -64,6 +80,26 @@ class ProctoringManager:
             }
             asyncio.run_coroutine_threadsafe(websocket.send_json(warning_msg), loop)
 
+        def handle_ready():
+            """Fired once when ProctoringSession finishes calibration (Runs on background thread)"""
+            self._ready_sessions.add(session_id)
+            print(f"[Manager] 🟢 Session {session_id} AI is READY — proctoring active.")
+
+            # 1. Write ai_ready_at timestamp to the database
+            try:
+                db = SessionLocal()
+                db_session = db.query(ExamSession).filter(ExamSession.id == int(session_id)).first()
+                if db_session:
+                    db_session.ai_ready_at = datetime.now(timezone.utc)
+                    db.commit()
+                db.close()
+            except Exception as e:
+                print(f"[Manager] Failed to write ai_ready_at to database: {e}")
+
+            # 2. Push ai_ready message down the WebSocket to the student
+            ready_msg = {"type": "ai_ready"}
+            asyncio.run_coroutine_threadsafe(websocket.send_json(ready_msg), loop)
+
         # ─── FETCH THE REAL STUDENT FROM THE DATABASE ──────────────────────────
         # Open a quick, temporary database connection
         db = SessionLocal()
@@ -86,7 +122,8 @@ class ProctoringManager:
             student_id=real_student_id, 
             student_name=real_student_name, 
             session_id=session_id,
-            on_alert=handle_alert
+            on_alert=handle_alert,
+            on_ready=handle_ready
         )
         
         ai_session.start()
@@ -111,5 +148,8 @@ class ProctoringManager:
             print(f"[Manager] 📄 PDF Report generated at: {report.get('pdf_path')}")
             
             del self.active_sessions[session_id]
+            # Clean up readiness tracking
+            self._ready_sessions.discard(session_id)
+            self._failed_sessions.discard(session_id)
 
 manager = ProctoringManager()

@@ -6,8 +6,9 @@ from typing import List
 from core.database import get_db
 from core.dependencies import get_current_user, get_current_student
 from core import crud
-from schemas.session import SessionCreate, SessionResponse, StudentAnswerSubmit, SubmissionResult
+from schemas.session import SessionCreate, SessionResponse, StudentAnswerSubmit, SubmissionResult, AIStatusResponse
 from services.exam_scoring import ScoringEngine
+from services.proctoring_manager import manager
 
 from models.events import Event
 from schemas.events import EventOut
@@ -61,6 +62,13 @@ def submit_exam(
     if session_record.status == "completed":
         raise HTTPException(status_code=400, detail="Exam already submitted")
 
+    # Reject submission if the AI never confirmed ready
+    if session_record.ai_ready_at is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot submit — AI proctoring has not finished initializing yet."
+        )
+
     # Fetch questions to grade
     questions = crud.get_exam_questions(db, exam_id=session_record.exam_id)
     if not questions:
@@ -110,3 +118,16 @@ def get_session_events(session_id: int, db: Session = Depends(get_db)):
     # FastAPI will automatically pass this list of raw database rows through the 
     # EventOut schema, formatting it perfectly for the frontend dashboard!
     return events
+
+
+@router.get("/{session_id}/ai-status", response_model=AIStatusResponse)
+def get_ai_status(
+    session_id: int,
+    current_user = Depends(get_current_user)
+):
+    """
+    Reconnection fallback: check the AI readiness status for a session.
+    Returns 'waiting', 'initializing', 'ready', or 'failed'.
+    """
+    status = manager.get_ai_status(str(session_id))
+    return {"session_id": session_id, "status": status}
