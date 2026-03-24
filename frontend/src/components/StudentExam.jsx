@@ -209,6 +209,40 @@ function StudentExam({ onNavigate, examController }) {
     }
   }, [cameraStatus, sessionId])
 
+  // Re-attach camera stream to the visible sidebar video after AI loading gate ends
+  useEffect(() => {
+    if (!aiReady || cameraStatus !== 'active') {
+      return
+    }
+
+    const videoElement = sidebarVideoRef.current
+    const videoStream = streamRef.current
+
+    if (!videoElement || !videoStream) {
+      return
+    }
+
+    if (videoElement.srcObject !== videoStream) {
+      videoElement.srcObject = videoStream
+    }
+
+    const playVideo = async () => {
+      try {
+        await videoElement.play()
+      } catch {
+        // ignore autoplay race conditions
+      }
+    }
+
+    if (videoElement.readyState >= 1) {
+      playVideo()
+    } else {
+      videoElement.onloadedmetadata = () => {
+        playVideo()
+      }
+    }
+  }, [aiReady, cameraStatus])
+
   // Poll AI status to detect when it's ready
   useEffect(() => {
     if (!sessionId || aiReady) return
@@ -229,8 +263,8 @@ function StudentExam({ onNavigate, examController }) {
       }
     }
 
-    // Poll every 500ms until AI is ready
-    aiStatusIntervalRef.current = setInterval(pollAiStatus, 500)
+    // Poll every 2s until AI is ready (fallback when WebSocket ready signal is missed)
+    aiStatusIntervalRef.current = setInterval(pollAiStatus, 2000)
     pollAiStatus() // Initial call
 
     return () => {
@@ -277,7 +311,18 @@ function StudentExam({ onNavigate, examController }) {
 
   // Show AI initialization screen while AI is initializing
   if (!aiReady) {
-    return <AIInitializingScreen state={aiState} />
+    return (
+      <>
+        <AIInitializingScreen state={aiState} />
+        <video
+          ref={sidebarVideoRef}
+          autoPlay
+          playsInline
+          muted
+          className="hidden"
+        />
+      </>
+    )
   }
 
   return (
@@ -608,7 +653,7 @@ function StudentExam({ onNavigate, examController }) {
                 { label: t('student.exam.micCheck'), status: microphoneStatus === 'active' ? t('student.exam.activeStatus') : t('student.exam.errorStatus'), active: microphoneStatus === 'active' },
                 { label: t('student.exam.screenCheck'), status: t('student.exam.activeStatus'), active: true },
                 { label: t('student.exam.networkCheck'), status: t('student.exam.networkStable'), active: true },
-                { label: t('student.exam.aiMonitorCheck'), status: apiStatus, active: ['Ready', 'Streaming', 'Connecting'].includes(apiStatus) }
+                { label: t('student.exam.aiMonitorCheck'), status: apiStatus, active: ['Connected', 'AI Ready', 'Streaming', 'Connecting'].includes(apiStatus) }
               ].map((item, idx) => (
                 <div key={idx} className="flex items-center justify-between">
                   <div className="flex items-center gap-2.5">
