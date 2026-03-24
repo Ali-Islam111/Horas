@@ -10,6 +10,7 @@ function StudentExam({ onNavigate, examController }) {
   const { handleAnswer, handleSubmitExam } = actions
 
   const [timeRemaining, setTimeRemaining] = useState({ hours: 1, minutes: 0, seconds: 0 })
+  const [showSubmitModal, setShowSubmitModal] = useState(false)
   const [currentQuestion, setCurrentQuestion] = useState(1)
   const [cameraStatus, setCameraStatus] = useState('checking')
   const [microphoneStatus, setMicrophoneStatus] = useState('checking')
@@ -211,26 +212,119 @@ function StudentExam({ onNavigate, examController }) {
     if (currentQuestion > 1) setCurrentQuestion(q => q - 1)
   }
 
-  const onSubmit = async () => {
-    const unanswered = questions.length - Object.keys(answers).length;
-    let message = t('student.exam.confirmSubmit');
-    
-    if (unanswered > 0) {
-      message = t('student.exam.unansweredQuestions').replace('{count}', unanswered);
-    }
+  const onSubmit = () => {
+    setShowSubmitModal(true)
+  }
 
-    if (window.confirm(message)) {
-      const submitResult = await handleSubmitExam()
-      if (submitResult) {
-        onNavigate('examSubmission')
-      } else {
-        alert(error || 'Failed to submit exam. Please try again.')
-      }
+  const confirmSubmit = async () => {
+    setShowSubmitModal(false)
+    const submitResult = await handleSubmitExam()
+    if (submitResult) {
+      onNavigate('examSubmission')
+    } else {
+      alert(error || 'Failed to submit exam. Please try again.')
     }
   }
 
+  const unansweredCount = totalQuestions - answeredCount
+
   return (
     <div className="min-h-screen bg-[#030014] text-slate-200 overflow-hidden relative selection:bg-purple-500/30 font-sans">
+
+      {/* ── Submit Confirmation Modal ── */}
+      {showSubmitModal && (
+        <div className="fixed inset-0 z-[999] flex items-center justify-center p-4">
+          {/* Backdrop */}
+          <div
+            className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+            onClick={() => setShowSubmitModal(false)}
+          />
+
+          {/* Modal card */}
+          <div className="relative w-full max-w-md animate-zoom-in-down">
+            {/* Glow */}
+            <div className="absolute -inset-1 rounded-3xl bg-gradient-to-br from-emerald-500/30 via-cyan-500/20 to-purple-500/30 blur-xl pointer-events-none" />
+
+            <div className="relative rounded-2xl border border-white/10 bg-slate-950/95 backdrop-blur-2xl overflow-hidden shadow-2xl">
+              {/* Top accent bar */}
+              <div className="h-[2px] w-full bg-gradient-to-r from-emerald-400 via-cyan-400 to-purple-400" />
+
+              <div className="p-8">
+                {/* Icon */}
+                <div className="flex justify-center mb-5">
+                  <div className="relative">
+                    <div className="absolute inset-0 rounded-full bg-emerald-500/20 animate-ping" />
+                    <div className="relative w-16 h-16 rounded-full bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center">
+                      <svg className="w-8 h-8 text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+                        <polyline points="22 4 12 14.01 9 11.01" />
+                      </svg>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Title */}
+                <h2 className="text-center text-white text-xl font-bold mb-2 tracking-tight">
+                  {t('student.exam.confirmSubmit') || 'Submit Your Exam?'}
+                </h2>
+                <p className="text-center text-slate-400 text-sm mb-6">
+                  Once submitted, you cannot change your answers.
+                </p>
+
+                {/* Stats row */}
+                <div className="grid grid-cols-2 gap-3 mb-6">
+                  <div className="rounded-xl bg-emerald-500/10 border border-emerald-500/20 p-4 text-center">
+                    <div className="text-2xl font-bold text-emerald-400">{answeredCount}</div>
+                    <div className="text-xs text-slate-400 font-medium mt-1">Answered</div>
+                  </div>
+                  <div className={`rounded-xl border p-4 text-center ${unansweredCount > 0 ? 'bg-amber-500/10 border-amber-500/25' : 'bg-white/5 border-white/8'}`}>
+                    <div className={`text-2xl font-bold ${unansweredCount > 0 ? 'text-amber-400' : 'text-slate-400'}`}>{unansweredCount}</div>
+                    <div className="text-xs text-slate-400 font-medium mt-1">Unanswered</div>
+                  </div>
+                </div>
+
+                {/* Warning for unanswered */}
+                {unansweredCount > 0 && (
+                  <div className="flex items-start gap-3 px-4 py-3 rounded-xl bg-amber-500/8 border border-amber-500/20 mb-6">
+                    <svg className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                      <line x1="12" y1="9" x2="12" y2="13" />
+                      <line x1="12" y1="17" x2="12.01" y2="17" />
+                    </svg>
+                    <p className="text-amber-300 text-xs leading-relaxed">
+                      You have <span className="font-bold text-amber-400">{unansweredCount}</span> unanswered {unansweredCount === 1 ? 'question' : 'questions'}. Skipped questions will be marked as incorrect.
+                    </p>
+                  </div>
+                )}
+
+                {/* Action buttons */}
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => setShowSubmitModal(false)}
+                    className="flex-1 py-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 text-white font-semibold text-sm transition-all duration-200 hover:-translate-y-0.5 active:scale-[0.98]"
+                  >
+                    Keep Reviewing
+                  </button>
+                  <button
+                    onClick={confirmSubmit}
+                    className="flex-1 relative group py-3 rounded-xl font-bold text-sm text-white overflow-hidden transition-all duration-200 hover:-translate-y-0.5 active:scale-[0.98] shadow-lg hover:shadow-emerald-500/30"
+                    style={{ boxShadow: '0 0 25px rgba(16,185,129,0.3)' }}
+                  >
+                    <div className="absolute inset-0 bg-gradient-to-r from-emerald-600 to-teal-500 opacity-90 group-hover:opacity-100 transition-opacity" />
+                    <span className="relative z-10 flex items-center justify-center gap-2">
+                      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+                        <polyline points="22 4 12 14.01 9 11.01" />
+                      </svg>
+                      Submit Exam
+                    </span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Background Grid Pattern & Noise */}
       <div className="fixed inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 pointer-events-none mix-blend-soft-light z-0"></div>

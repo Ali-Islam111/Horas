@@ -44,7 +44,7 @@ def get_exam_questions(
     """
     questions = crud.get_exam_questions(db, exam_id=exam_id)
     
-    if current_user.role == "teacher":
+    if current_user.role == "admin":
         # Teachers get everything including correct_choice
         return [QuestionTeacherResponse.model_validate(q) for q in questions]
     

@@ -96,7 +96,7 @@ def get_my_submissions(
 
 
 @router.get("/{session_id}/events", response_model=List[EventOut])
-def get_session_events(s_id: int, db: Session = Depends(get_db)):
+def get_session_events(session_id: int, db: Session = Depends(get_db)):
     """
     Step 8 (View Logs): Fetches all cheating logs for a specific session to prove the AI worked.
     Returns the logs ordered by the exact time they happened.
@@ -104,7 +104,7 @@ def get_session_events(s_id: int, db: Session = Depends(get_db)):
     # Query the events table, filter by the session ID, and sort by timestamp
     events = (
         db.query(Event)
-        .filter(Event.session_id == s_id)
+        .filter(Event.session_id == session_id)
         .order_by(Event.timestamp.asc())
         .all()
     )

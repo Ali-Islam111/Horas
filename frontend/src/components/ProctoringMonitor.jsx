@@ -9,6 +9,7 @@ import { connectProctoringWS } from '../services/proctoringService'
 // ============================================
 function ProctoringMonitor({ onNavigate }) {
   const { t, language, toggleLanguage } = useLanguage()
+  const userRole = localStorage.getItem('user_role')
 
   // ── State ──────────────────────────────────────────────────────────────────
   const [wsStatus, setWsStatus]       = useState('connecting') // 'connecting' | 'connected' | 'disconnected'
@@ -132,6 +133,17 @@ function ProctoringMonitor({ onNavigate }) {
     disconnected: { label: 'Disconnected',      color: 'text-red-400',    dot: 'bg-red-400' },
   }[wsStatus]
 
+  const handleBackNavigation = () => {
+    if (!onNavigate) return
+
+    if (userRole === 'teacher' || userRole === 'admin' || userRole === 'instructor') {
+      onNavigate('examiner')
+      return
+    }
+
+    onNavigate('dashboard')
+  }
+
   // ============================================
   // Render
   // ============================================
@@ -174,7 +186,7 @@ function ProctoringMonitor({ onNavigate }) {
             </button>
             {onNavigate && (
               <button
-                onClick={() => onNavigate('dashboard')}
+                onClick={handleBackNavigation}
                 className="px-5 py-2.5 rounded-xl font-semibold text-sm transition-all duration-300 flex items-center gap-2 border border-white/10 bg-white/5 hover:bg-white/10 hover:border-white/20 text-slate-300 hover:text-white hover:-translate-y-0.5"
               >
                 <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">

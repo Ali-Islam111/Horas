@@ -39,7 +39,20 @@ export const useExamCreation = () => {
     const options = (question.options || []).map((opt) => String(opt || '').trim()).filter(Boolean);
     const safeOptions = options.length >= 2 ? options : ['Option A', 'Option B'];
 
-    const answerIndexFromText = safeOptions.findIndex((opt) => opt === question.correctAnswer);
+    const normalizedCorrectAnswer = String(question.correctAnswer || '').trim().toLowerCase();
+
+    let answerIndexFromText = safeOptions.findIndex(
+      (opt) => String(opt).trim().toLowerCase() === normalizedCorrectAnswer
+    );
+
+    // Support letter-style answers from AI/manual inputs: A, b, C), D.
+    if (answerIndexFromText < 0 && normalizedCorrectAnswer) {
+      const first = normalizedCorrectAnswer[0];
+      if (['a', 'b', 'c', 'd'].includes(first)) {
+        answerIndexFromText = first.charCodeAt(0) - 97;
+      }
+    }
+
     const resolvedIndex = question.correctAnswerIndex ?? (answerIndexFromText >= 0 ? answerIndexFromText : 0);
     const clampedIndex = Math.max(0, Math.min(resolvedIndex, safeOptions.length - 1));
     const correctChoiceLetter = String.fromCharCode(65 + clampedIndex);

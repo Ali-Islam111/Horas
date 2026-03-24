@@ -35,10 +35,10 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     return user
 
 def get_current_teacher(current_user = Depends(get_current_user)):
-    if current_user.role != "teacher":
+    if current_user.role != "admin":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="The user does not have enough privileges (Teacher role required)."
+            detail="The user does not have enough privileges (Admin role required)."
         )
     return current_user
 

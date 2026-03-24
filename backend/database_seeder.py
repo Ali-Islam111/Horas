@@ -102,7 +102,7 @@ def seed_database():
         print("=====================================================")
         print("✅ Database successfully seeded with initial test data!")
         print("🔑 LOGIN CREDENTIALS:")
-        print(f"   Admin: admin@system.com / {dummy_password}")
+        print(f"   Admin: admin@system.com / {dummy_password} (role: admin)")
         print(f"   Student: student@system.com / {dummy_password}")
         print("-----------------------------------------------------")
         print(f"👉 Use Session ID: {active_session.id} for your WebSocket tests.")

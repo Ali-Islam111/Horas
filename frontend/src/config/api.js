@@ -45,7 +45,7 @@ export const API_ENDPOINTS = {
 
   // Events: AI manager logs violations here; examiner reads them from here
   LOG_EVENT:       `${API_BASE_URL}/api/events/log`,
-  GET_SESSION_EVENTS: (sessionId) => `${API_BASE_URL}/api/events/session/${sessionId}`,
+  GET_SESSION_EVENTS: (sessionId) => `${API_BASE_URL}/api/sessions/${sessionId}/events`,
   GET_ALL_EVENTS:  `${API_BASE_URL}/api/events/all`,
 }
 

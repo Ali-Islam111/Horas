@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import bgArt from '../../assets/R 3.png'
+import bgArt from '../../assets/logo.png'
 import { useLanguage } from '../contexts/LanguageContext'
 
 function ExamSubmission({ onNavigate, examController }) {
@@ -11,7 +11,8 @@ function ExamSubmission({ onNavigate, examController }) {
   const percentage = Number(result?.score ?? session?.final_score ?? 0)
   const score = Math.round(percentage)
   const total = 100
-  const answeredCount = Object.keys(answers || session?.student_answers || {}).length
+  const effectiveAnswers = Object.keys(answers || {}).length > 0 ? answers : (session?.student_answers || {})
+  const answeredCount = Object.keys(effectiveAnswers).length
   
   // Calculate Grade
   const getGrade = (p) => {

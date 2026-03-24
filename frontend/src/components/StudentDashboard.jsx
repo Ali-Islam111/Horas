@@ -269,7 +269,7 @@ function StudentDashboard({ onNavigate, examController }) {
                     >
                       <div className="absolute inset-0 bg-gradient-to-r from-cyan-600 to-purple-600 opacity-90 group-hover:opacity-100 transition-opacity"></div>
                       <span className="relative z-10 flex items-center gap-2">
-                        {t('student.dashboard.startNow')}
+                        {t('student.dashboard.startExamBtn')}
                         <svg className="w-4 h-4 ltr:group-hover:translate-x-1 rtl:group-hover:-translate-x-1 transition-transform" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
                       </span>
                     </button>

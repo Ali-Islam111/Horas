@@ -67,22 +67,29 @@ const translations = {
                 loginState: 'Log In',
                 loading: 'Loading...',
                 newToHoras: 'New to Horus?',
-                createAccountLink: 'Create an account'
+                createAccountLink: 'Create an account',
+                newInstructor: 'New instructor?',
+                createInstructorLink: 'Create an instructor account'
             },
             create: {
-                passwordMismatch: 'Passwords do not match',
+                passwordMismatch: 'Passwords do not match!',
                 accountCreated: 'Account created for',
-                joinTitle: 'Join Horus Platform',
-                createDesc: 'Create an account to access secure examinations',
+                joinTitle: 'Create Account',
+                studentDesc: 'Create an account to access secure examinations',
+                instructorDesc: 'Create your instructor account to manage exams',
                 fullName: 'Full Name',
                 fullNamePlaceholder: 'John Doe',
                 studentId: 'Student ID',
                 passwordConfirm: 'Confirm',
                 createBtn: 'Create Account',
                 alreadyHave: 'Already have an account?',
-                loginHere: 'Login here',
-                passwordMismatch: 'Passwords do not match!',
-                accountCreated: 'Account created for'
+                loginHere: 'Login here'
+            },
+            instructor: {
+                department: 'Department',
+                departmentPlaceholder: 'e.g., Computer Science',
+                institution: 'Institution',
+                institutionPlaceholder: 'e.g., University Name'
             }
         },
         student: {
@@ -355,6 +362,7 @@ const translations = {
             },
             students: {
                 welcomeDesc: 'Manage student records',
+                liveMonitor: 'Live Monitor',
                 stats: {
                     total: 'Total Students',
                     active: 'Active Students',
@@ -369,6 +377,7 @@ const translations = {
                 },
                 table: {
                     id: 'Student ID',
+                    studentId: 'Student ID',
                     name: 'Name',
                     email: 'Email',
                     exams: 'Exams',
@@ -541,13 +550,16 @@ const translations = {
                 forgotPassword: 'هل نسيت كلمة المرور؟',
                 loginState: 'تسجيل دخول آمن',
                 newToHoras: 'جديد في حورس؟',
-                createAccountLink: 'إنشاء حساب'
+                createAccountLink: 'إنشاء حساب',
+                newInstructor: 'أنت معلم جديد؟',
+                createInstructorLink: 'إنشاء حساب معلم'
             },
             create: {
                 passwordMismatch: 'كلمة المرور غير متطابقة',
                 accountCreated: 'تم إنشاء حساب لـ',
-                joinTitle: 'انضم إلى منصة حورس',
-                createDesc: 'أنشئ حساباً للوصول إلى الامتحانات الآمنة',
+                joinTitle: 'إنشاء حساب',
+                studentDesc: 'أنشئ حساباً للوصول إلى الامتحانات الآمنة',
+                instructorDesc: 'أنشئ حساب معلم لإدارة الامتحانات',
                 fullName: 'الاسم الكامل',
                 fullNamePlaceholder: 'أحمد محمود',
                 studentId: 'الرقم الجامعي',
@@ -555,6 +567,12 @@ const translations = {
                 createBtn: 'إنشاء حساب',
                 alreadyHave: 'لديك حساب بالفعل؟',
                 loginHere: 'سجل دخولك هنا'
+            },
+            instructor: {
+                department: 'القسم',
+                departmentPlaceholder: 'مثال: علوم الحاسوب',
+                institution: 'المؤسسة التعليمية',
+                institutionPlaceholder: 'مثال: جامعة ...'
             }
         },
         student: {
@@ -680,110 +698,6 @@ const translations = {
                 terms: 'شروط الخدمة',
                 security: 'الأمان',
                 rights: 'تكنولوجيا حورس. جميع الحقوق محفوظة.'
-            }
-        },
-        auth: {
-            login: {
-                welcome: 'أهلاً بك في حورس',
-                studentAccess: 'الوصول إلى بوابة الطالب الآمنة الخاصة بك',
-                instructorAccess: 'الوصول إلى لوحة معلومات الممتحن الخاصة بك',
-                student: 'طالب',
-                instructor: 'ممتحن',
-                emailLabel: 'البريد الإلكتروني',
-                studentEmailPlaceholder: 'student@university.edu',
-                instructorEmailPlaceholder: 'instructor@university.edu',
-                passwordLabel: 'كلمة المرور',
-                forgotPassword: 'هل نسيت كلمة المرور؟',
-                loginState: 'تسجيل الدخول',
-                loading: 'جاري التحميل...',
-                newToHoras: 'هل أنت جديد في حورس؟',
-                createAccountLink: 'إنشاء حساب'
-            },
-            create: {
-                joinTitle: 'انضم إلى منصة حورس',
-                createDesc: 'قم بإنشاء حساب الطالب الخاص بك',
-                fullName: 'الاسم الكامل',
-                fullNamePlaceholder: 'أدخل اسمك الكامل',
-                studentId: 'الرقم الجامعي',
-                passwordConfirm: 'تأكيد',
-                createBtn: 'إنشاء حساب',
-                alreadyHave: 'هل لديك حساب بالفعل؟',
-                loginHere: 'تسجيل الدخول',
-                passwordMismatch: 'كلمات المرور غير متطابقة!',
-                accountCreated: 'تم إنشاء الحساب لـ'
-            }
-        },
-        student: {
-            dashboard: {
-                portal: 'بوابة الطالب',
-                logout: 'تسجيل الخروج',
-                welcomeBack: 'مرحباً بعودتك،',
-                upcomingExamsCount: 'لديك {count} امتحانات قادمة مجدولة.',
-                rulesTitle: 'قواعد ومتطلبات الامتحان',
-                cameraRuleTitle: 'يجب تشغيل الكاميرا',
-                cameraRuleDesc: 'المراقبة المستمرة للوجه مفعلة.',
-                tabRuleTitle: 'ممنوع تبديل علامات التبويب',
-                tabRuleDesc: 'يتم تتبع نشاط المتصفح بدقة.',
-                timerRuleTitle: 'التسليم التلقائي للوقت',
-                timerRuleDesc: 'يتم التسليم تلقائياً عند انتهاء الوقت.',
-                secureRuleTitle: 'بيئة آمنة',
-                secureRuleDesc: 'غير مسموح بالأجهزة الإلكترونية الخارجية.',
-                nextExam: 'الامتحان القادم',
-                timeUntil: 'الوقت المتبقي حتى',
-                systemCheck: 'فحص النظام',
-                cameraPass: 'الكاميرا تعمل',
-                micPass: 'الميكروفون يعمل',
-                browserPass: 'المتصفح متوافق',
-                upcomingTitle: 'الامتحانات القادمة',
-                scheduledBadge: 'مجدول',
-                minDuration: 'دقيقة',
-                startExamBtn: 'بدء الامتحان'
-            },
-            exam: {
-                sessionActive: 'جلسة الامتحان نشطة',
-                recordingBadge: 'تسجيل',
-                timeRemaining: 'الوقت المتبقي',
-                progress: 'التقدم',
-                autoSaved: 'تم الحفظ التلقائي في السحابة',
-                multipleChoice: 'اختيار من متعدد',
-                topicPrefix: 'الموضوع:',
-                prevBtn: 'السابق',
-                nextBtn: 'التالي',
-                submitBtn: 'تسليم الامتحان',
-                confirmSubmit: 'هل أنت متأكد أنك تريد تسليم الامتحان؟',
-                proctoringFeed: 'بث المراقبة',
-                liveStatus: 'مباشر',
-                initCamera: 'جاري تهيئة الكاميرا...',
-                cameraDisconnected: 'تم فصل الكاميرا',
-                navigator: 'المتصفح',
-                diagnostics: 'التشخيص',
-                cameraFeedCheck: 'بث الكاميرا',
-                micCheck: 'الميكروفون',
-                screenCheck: 'مشاركة الشاشة',
-                networkCheck: 'الشبكة',
-                networkStable: 'مستقر',
-                aiMonitorCheck: 'مراقب الذكاء الاصطناعي',
-                activeStatus: 'نشط',
-                errorStatus: 'خطأ',
-                unansweredQuestions: 'لديك {count} أسئلة غير مجابة. هل أنت متأكد من رغبتك في التسليم؟'
-            },
-            submission: {
-                title: 'تم تسليم الامتحان بنجاح!',
-                message: 'تم نقل امتحانك بأمان ويتم الآن تحليله بواسطة حورس بشكل استباقي.',
-                estScore: 'النتيجة التقديرية',
-                feedbackExcellent: 'عمل ممتاز! أداء رائع.',
-                feedbackGreat: 'عمل رائع! فهم قوي جداً.',
-                feedbackGood: 'مجهود جيد!',
-                feedbackPassed: 'نجاح.',
-                feedbackKeepPracticing: 'استمر في التدريب!',
-                examLabel: 'الامتحان',
-                timeLabel: 'الوقت',
-                answeredLabel: 'تمت الإجابة',
-                dateLabel: 'التاريخ',
-                securityVerify: 'التحقق الأمني المستمر لحورس',
-                securityVerifyDesc: 'تم تشفير وتسجيل الجلسة المسجلة. تقوم بيانات تتبع الذكاء الاصطناعي بالتحقق من بيئة الامتحان بأمان.',
-                returnDash: 'العودة إلى لوحة القيادة',
-                reviewSub: 'مراجعة التسليم'
             }
         },
         examiner: {
@@ -983,6 +897,7 @@ const translations = {
             },
             students: {
                 welcomeDesc: 'إدارة سجلات الطلاب',
+                liveMonitor: 'المراقبة المباشرة',
                 stats: {
                     total: 'إجمالي الطلاب',
                     active: 'الطلاب النشطون',
@@ -997,6 +912,7 @@ const translations = {
                 },
                 table: {
                     id: 'معرف الطالب',
+                    studentId: 'معرف الطالب',
                     name: 'الاسم',
                     email: 'البريد الإلكتروني',
                     exams: 'الامتحانات',

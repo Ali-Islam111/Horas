@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import './App.css'
 import { LanguageProvider } from './contexts/LanguageContext'
 import { useExamController } from './controllers/useExamController'
+import { getInitialPage, updateURLFromPage, savePageToSession } from './utils/routeMapping'
 import LandingPage from './components/LandingPage'
 import Login from './components/Login'
 import CreateAccount from './components/CreateAccount'
@@ -17,13 +18,29 @@ import ExaminerAlerts from './components/ExaminerAlerts'
 import ExaminerSettings from './components/ExaminerSettings'
 import ExamSubmission from './components/ExamSubmission'
 import ProctoringMonitor from './components/ProctoringMonitor'
-
-// Detect if browser was redirected here from Google OAuth callback
-const isGoogleCallback = window.location.pathname.startsWith('/auth/callback')
+import CookieBanner from './components/CookieBanner'
 
 function App() {
-  const [page, setPage] = useState(isGoogleCallback ? 'googleCallback' : 'landing')
+  // Get initial page from URL or sessionStorage (survives refresh)
+  const [page, setPage] = useState(() => getInitialPage())
   const examController = useExamController(setPage)
+
+  // Update URL when page changes (for browser history and deep linking)
+  useEffect(() => {
+    updateURLFromPage(page)
+    savePageToSession(page)
+  }, [page])
+
+  // Handle browser back/forward button
+  useEffect(() => {
+    const handlePopState = (event) => {
+      if (event.state?.page) {
+        setPage(event.state.page)
+      }
+    }
+    window.addEventListener('popstate', handlePopState)
+    return () => window.removeEventListener('popstate', handlePopState)
+  }, [])
 
   return (
     <LanguageProvider>
@@ -42,6 +59,7 @@ function App() {
       {page === 'examinerSettings' && <ExaminerSettings onNavigate={setPage} examController={examController} />}
       {page === 'examSubmission' && <ExamSubmission onNavigate={setPage} examController={examController} />}
       {page === 'proctoringMonitor' && <ProctoringMonitor onNavigate={setPage} examController={examController} />}
+      <CookieBanner />
     </LanguageProvider>
   )
 }

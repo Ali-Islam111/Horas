@@ -1,6 +1,5 @@
 import React from 'react'
-import rightArt from '../../assets/R 3.png'
-import instractorArt from '../../assets/create.png'
+import rightArt from '../../assets/logo.png'
 import logo from '../../assets/Untitled (1).png'
 import { useLanguage } from '../contexts/LanguageContext'
 import { useAuthController } from '../controllers/useAuthController'
@@ -44,17 +43,8 @@ function Login({ onNavigate }) {
             <div className="relative w-full max-w-[480px] h-[560px] flex items-center justify-center">
               <img
                 src={rightArt}
-                alt="Student decorative"
-                className={`absolute inset-0 w-full h-full object-contain z-10 drop-shadow-2xl transition-all duration-500 transform ${role === 'student' ? 'opacity-100 scale-100 blur-0' : 'opacity-0 scale-95 blur-md'}`}
-              />
-              <img
-                src={instractorArt}
-                alt="Instructor decorative"
-                className={`absolute inset-0 w-full h-full object-contain z-10 drop-shadow-2xl transition-all duration-500 transform ${role === 'instructor' ? 'opacity-100 scale-100 blur-0' : 'opacity-0 scale-95 blur-md'}`}
-                onError={(e) => {
-                  // Fallback if the instructor art doesn't exist
-                  e.target.style.display = 'none';
-                }}
+                alt="Authentication decorative"
+                className={`absolute inset-0 w-full h-full object-contain z-10 drop-shadow-2xl transition-all duration-500 transform ${!isTransitioning ? 'opacity-100 scale-100 blur-0' : 'opacity-0 scale-95 blur-md'}`}
               />
             </div>
           </div>
@@ -210,6 +200,16 @@ function Login({ onNavigate }) {
                 {t('auth.login.newToHoras')} {' '}
                 <a href="#" onClick={(e) => { e.preventDefault(); onNavigate('create'); }} className="text-purple-400 font-semibold hover:text-purple-300 transition-colors">
                   {t('auth.login.createAccountLink')}
+                </a>
+              </div>
+            </div>
+
+            {/* Height transition container for instructor sign up link */}
+            <div className={`flex flex-col gap-2 transition-all duration-500 ease-in-out overflow-hidden ${role === 'instructor' ? 'mt-5 max-h-20 opacity-100' : 'mt-0 max-h-0 opacity-0'}`}>
+              <div className="text-center text-sm text-slate-400">
+                {t('auth.login.newInstructor')} {' '}
+                <a href="#" onClick={(e) => { e.preventDefault(); onNavigate('create'); }} className="text-emerald-400 font-semibold hover:text-emerald-300 transition-colors">
+                  {t('auth.login.createInstructorLink')}
                 </a>
               </div>
             </div>

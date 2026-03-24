@@ -22,6 +22,8 @@ export function useAuthController(onNavigate) {
   // Registration Specific State
   const [fullName, setFullName] = useState('');
   const [studentId, setStudentId] = useState('');
+  const [department, setDepartment] = useState('');
+  const [institution, setInstitution] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [registerError, setRegisterError] = useState(null);
   const [registerSuccess, setRegisterSuccess] = useState(false);
@@ -81,7 +83,9 @@ export function useAuthController(onNavigate) {
     setIsLoading(true);
 
     try {
-      await AuthService.register(email, fullName, password, 'student');
+      // Map UI role 'instructor' → backend role 'teacher'
+      const backendRole = role === 'instructor' ? 'teacher' : 'student';
+      await AuthService.register(email, fullName, password, backendRole);
       
       setRegisterSuccess(true);
       setTimeout(() => {
@@ -105,6 +109,8 @@ export function useAuthController(onNavigate) {
       loginError,
       fullName,
       studentId,
+      department,
+      institution,
       confirmPassword,
       registerError,
       registerSuccess
@@ -114,6 +120,8 @@ export function useAuthController(onNavigate) {
       setPassword,
       setFullName,
       setStudentId,
+      setDepartment,
+      setInstitution,
       setConfirmPassword,
       handleRoleChange,
       handleLogin,

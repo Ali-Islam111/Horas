@@ -35,6 +35,9 @@
   --color-primary-blue: #38BDF8;
   --color-dark-blue: #020617;
   --color-card-bg: rgba(255, 255, 255, 0.08);
+
+  /* Custom Animations */
+  --animate-zoom-in-down: zoomInDown 0.5s ease-out;
 }
 
 @layer base {
@@ -75,6 +78,11 @@
   background: linear-gradient(135deg, rgba(34, 197, 94, 1), rgba(56, 189, 248, 1));
   box-shadow: 0 8px 24px rgba(56, 189, 248, 0.6);
   transform: scale(1.05);
+}
+
+/* Custom animation utilities */
+.animate-zoom-in-down {
+  animation: zoomInDown 0.5s ease-out forwards;
 }
 
 /* Logo-inspired animations */
@@ -125,6 +133,97 @@
     background: linear-gradient(135deg, rgba(34, 197, 94, 0.9), rgba(56, 189, 248, 0.9));
   }
 }
+
+@keyframes zoomInDown {
+
+  0% {
+    opacity: 0;
+    transform: scale(0.3) translateY(-100px);
+  }
+
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% center; }
+  100% { background-position: 200% center; }
+}
+
+@keyframes floatOrb {
+  0%, 100% { transform: translateY(0px) translateX(0px) scale(1); }
+  25% { transform: translateY(-30px) translateX(15px) scale(1.05); }
+  50% { transform: translateY(-15px) translateX(-10px) scale(0.97); }
+  75% { transform: translateY(-40px) translateX(5px) scale(1.03); }
+}
+
+@keyframes fadeSlideUp {
+  from { opacity: 0; transform: translateY(24px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes pulseRing {
+  0%   { transform: scale(1); opacity: 0.6; }
+  100% { transform: scale(1.6); opacity: 0; }
+}
+
+@keyframes rotateBorder {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+@keyframes progressFill {
+  from { width: 0%; }
+}
+
+/* Utility classes */
+.animate-shimmer {
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.15), transparent);
+  background-size: 200% auto;
+  animation: shimmer 2s linear infinite;
+}
+
+.animate-float-orb { animation: floatOrb 8s ease-in-out infinite; }
+.animate-float-orb-slow { animation: floatOrb 12s ease-in-out infinite reverse; }
+
+.animate-fade-slide-up { animation: fadeSlideUp 0.5s ease-out forwards; }
+
+.animate-pulse-ring {
+  animation: pulseRing 1.8s ease-out infinite;
+}
+
+/* Staggered field animations */
+.field-stagger-1 { animation: fadeSlideUp 0.4s ease-out 0.05s both; }
+.field-stagger-2 { animation: fadeSlideUp 0.4s ease-out 0.12s both; }
+.field-stagger-3 { animation: fadeSlideUp 0.4s ease-out 0.19s both; }
+.field-stagger-4 { animation: fadeSlideUp 0.4s ease-out 0.26s both; }
+.field-stagger-5 { animation: fadeSlideUp 0.4s ease-out 0.33s both; }
+.field-stagger-6 { animation: fadeSlideUp 0.4s ease-out 0.40s both; }
+
+/* Floating label inputs */
+.floating-label-group { position: relative; }
+.floating-label-group input:focus + label,
+.floating-label-group input:not(:placeholder-shown) + label {
+  transform: translateY(-22px) scale(0.8);
+  opacity: 1;
+  color: var(--label-color, #a855f7);
+}
+.floating-label-group label {
+  position: absolute;
+  left: 40px;
+  top: 50%;
+  transform: translateY(-50%);
+  transition: all 0.25s ease;
+  pointer-events: none;
+  transform-origin: left center;
+  opacity: 0.5;
+}
+
+/* Glow input ring */
+.glow-input-purple:focus { box-shadow: 0 0 0 2px rgba(168,85,247,0.35), 0 0 20px rgba(168,85,247,0.2); }
+.glow-input-emerald:focus { box-shadow: 0 0 0 2px rgba(16,185,129,0.35), 0 0 20px rgba(16,185,129,0.2); }
 
 :root {
   font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;

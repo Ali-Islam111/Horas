@@ -10,4 +10,24 @@ export default defineConfig({
       },
     }),
   ],
+  server: {
+    // SPA Fallback for development - ensures all routes fallback to index.html
+    middlewares: {
+      order: 'post',
+      handler: (req, res, next) => {
+        if (req.method === 'GET' && !req.url.startsWith('/api') && !req.url.includes('.')) {
+          req.url = '/index.html'
+        }
+        return next()
+      },
+    },
+  },
+  build: {
+    rollupOptions: {
+      output: {
+        // Ensures SPA fallback works in production
+        fallback: 'index.html',
+      },
+    },
+  },
 })
