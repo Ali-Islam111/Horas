@@ -163,7 +163,7 @@ export function useExamController(onNavigate) {
       return submitResult;
     } catch (err) {
       setError(err.message);
-      return null;
+      throw err;
     } finally {
       setIsLoading(false);
       submitInFlightRef.current = false;

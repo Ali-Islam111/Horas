@@ -59,4 +59,20 @@ export const sessionService = {
     if (!response.ok) throw new Error('Failed to load submissions');
     return await response.json();
   },
+
+  /**
+   * Student: Get AI startup status for the active session.
+   * GET /api/sessions/{session_id}/ai-status
+   * Returns { session_id, status }
+   */
+  async getAIStatus(sessionId) {
+    const response = await fetch(`${API_BASE_URL}/api/sessions/${sessionId}/ai-status`, {
+      headers: authHeaders(),
+    });
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.detail || 'Failed to fetch AI status');
+    }
+    return await response.json();
+  },
 };

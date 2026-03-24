@@ -2,11 +2,13 @@ import { useState, useEffect, useRef } from 'react'
 import logo from '../../assets/Untitled (1).png'
 import { useLanguage } from '../contexts/LanguageContext'
 import { connectProctoringWS } from '../services/proctoringService'
+import { sessionService } from '../services/sessionService'
+import AIInitializingScreen from './AIInitializingScreen'
 
 function StudentExam({ onNavigate, examController }) {
   const { t, language, toggleLanguage } = useLanguage()
   const { state, actions } = examController
-  const { questions, currentExam, session, answers, isLoading, error } = state
+  const { questions, currentExam, session, answers, isLoading } = state
   const { handleAnswer, handleSubmitExam } = actions
 
   const [timeRemaining, setTimeRemaining] = useState({ hours: 1, minutes: 0, seconds: 0 })
@@ -15,15 +17,22 @@ function StudentExam({ onNavigate, examController }) {
   const [cameraStatus, setCameraStatus] = useState('checking')
   const [microphoneStatus, setMicrophoneStatus] = useState('checking')
   const [apiStatus, setApiStatus] = useState('Initializing')
+  const [aiReady, setAiReady] = useState(false)
+  const [aiState, setAiState] = useState('waiting')
   const sidebarVideoRef = useRef(null)
   const streamRef = useRef(null)
   const wsRef = useRef(null)
   const frameIntervalRef = useRef(null)
+  const aiStatusIntervalRef = useRef(null)
 
   const sessionId = session?.id || localStorage.getItem('current_session_id') || localStorage.getItem('session_id')
 
   // Timer countdown
   useEffect(() => {
+    if (!aiReady) {
+      return
+    }
+
     const timer = setInterval(() => {
       setTimeRemaining(prev => {
         let { hours, minutes, seconds } = prev
@@ -48,7 +57,7 @@ function StudentExam({ onNavigate, examController }) {
     }, 1000)
 
     return () => clearInterval(timer)
-  }, [])
+  }, [aiReady])
 
   // Check camera and microphone permissions and start video stream
   useEffect(() => {
@@ -163,7 +172,7 @@ function StudentExam({ onNavigate, examController }) {
 
     wsRef.current = connectProctoringWS(sessionId, {
       onOpen: () => {
-        setApiStatus('Ready')
+        setApiStatus('Connected')
         frameIntervalRef.current = setInterval(() => {
           const videoElement = sidebarVideoRef.current
           if (!videoElement || !wsRef.current) {
@@ -173,6 +182,11 @@ function StudentExam({ onNavigate, examController }) {
           wsRef.current.sendFrame(videoElement, 0.7)
           setApiStatus('Streaming')
         }, 350)
+      },
+      onReady: () => {
+        setAiState('ready')
+        setAiReady(true)
+        setApiStatus('AI Ready')
       },
       onAlert: (alertData) => {
         console.warn('[STUDENT EXAM] AI alert received:', alertData)
@@ -194,6 +208,37 @@ function StudentExam({ onNavigate, examController }) {
       console.log('⏹️ [STUDENT EXAM] Stopped AI WebSocket monitoring')
     }
   }, [cameraStatus, sessionId])
+
+  // Poll AI status to detect when it's ready
+  useEffect(() => {
+    if (!sessionId || aiReady) return
+
+    const pollAiStatus = async () => {
+      try {
+        const data = await sessionService.getAIStatus(sessionId)
+        const status = data?.status || 'waiting'
+
+        setAiState(status)
+        if (status === 'ready') {
+          setAiReady(true)
+        }
+
+        console.log(`🧠 [AI STATUS] status=${status}`)
+      } catch (err) {
+        console.warn('[AI STATUS] Failed to fetch AI status:', err)
+      }
+    }
+
+    // Poll every 500ms until AI is ready
+    aiStatusIntervalRef.current = setInterval(pollAiStatus, 500)
+    pollAiStatus() // Initial call
+
+    return () => {
+      if (aiStatusIntervalRef.current) {
+        clearInterval(aiStatusIntervalRef.current)
+      }
+    }
+  }, [sessionId, aiReady])
 
   const formatTime = (time) => {
     const pad = (num) => String(num).padStart(2, '0')
@@ -218,15 +263,22 @@ function StudentExam({ onNavigate, examController }) {
 
   const confirmSubmit = async () => {
     setShowSubmitModal(false)
-    const submitResult = await handleSubmitExam()
-    if (submitResult) {
-      onNavigate('examSubmission')
-    } else {
-      alert(error || 'Failed to submit exam. Please try again.')
+    try {
+      const submitResult = await handleSubmitExam()
+      if (submitResult) {
+        onNavigate('examSubmission')
+      }
+    } catch (submitError) {
+      alert(submitError?.message || 'Failed to submit exam. Please try again.')
     }
   }
 
   const unansweredCount = totalQuestions - answeredCount
+
+  // Show AI initialization screen while AI is initializing
+  if (!aiReady) {
+    return <AIInitializingScreen state={aiState} />
+  }
 
   return (
     <div className="min-h-screen bg-[#030014] text-slate-200 overflow-hidden relative selection:bg-purple-500/30 font-sans">

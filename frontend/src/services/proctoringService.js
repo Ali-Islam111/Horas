@@ -29,7 +29,7 @@ import { API_ENDPOINTS } from '../config/api'
  *
  * @returns {{ sendFrame: Function, close: Function, ws: WebSocket }}
  */
-export function connectProctoringWS(sessionId, { onAlert, onOpen, onClose, onError } = {}) {
+export function connectProctoringWS(sessionId, { onAlert, onReady, onOpen, onClose, onError } = {}) {
   const url = API_ENDPOINTS.PROCTOR_WS(sessionId)
   console.log(`[ProctoringService] 🔌 Connecting to ${url}`)
 
@@ -47,6 +47,9 @@ export function connectProctoringWS(sessionId, { onAlert, onOpen, onClose, onErr
       if (data.type === 'alert') {
         console.warn(`[ProctoringService] 🚨 Alert received:`, data)
         onAlert?.(data)
+      } else if (data.type === 'ai_ready') {
+        console.log(`[ProctoringService] ✅ AI ready signal received for session ${sessionId}`)
+        onReady?.(data)
       }
     } catch (e) {
       // Non-JSON message — ignore
