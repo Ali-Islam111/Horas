@@ -2,7 +2,6 @@ import { useState, useEffect, useRef } from 'react'
 import logo from '../../assets/Untitled (1).png'
 import { useLanguage } from '../contexts/LanguageContext'
 import { connectProctoringWS } from '../services/proctoringService'
-import { sessionService } from '../services/sessionService'
 import AIInitializingScreen from './AIInitializingScreen'
 
 function StudentExam({ onNavigate, examController }) {
@@ -23,7 +22,7 @@ function StudentExam({ onNavigate, examController }) {
   const streamRef = useRef(null)
   const wsRef = useRef(null)
   const frameIntervalRef = useRef(null)
-  const aiStatusIntervalRef = useRef(null)
+  
 
   const sessionId = session?.id || localStorage.getItem('current_session_id') || localStorage.getItem('session_id')
 
@@ -175,7 +174,8 @@ function StudentExam({ onNavigate, examController }) {
         setApiStatus('Connected')
         frameIntervalRef.current = setInterval(() => {
           const videoElement = sidebarVideoRef.current
-          if (!videoElement || !wsRef.current) {
+          // Ensure video is playing and has data before capturing frames
+          if (!videoElement || !wsRef.current || videoElement.readyState < 2) {
             return
           }
 
@@ -209,70 +209,7 @@ function StudentExam({ onNavigate, examController }) {
     }
   }, [cameraStatus, sessionId])
 
-  // Re-attach camera stream to the visible sidebar video after AI loading gate ends
-  useEffect(() => {
-    if (!aiReady || cameraStatus !== 'active') {
-      return
-    }
-
-    const videoElement = sidebarVideoRef.current
-    const videoStream = streamRef.current
-
-    if (!videoElement || !videoStream) {
-      return
-    }
-
-    if (videoElement.srcObject !== videoStream) {
-      videoElement.srcObject = videoStream
-    }
-
-    const playVideo = async () => {
-      try {
-        await videoElement.play()
-      } catch {
-        // ignore autoplay race conditions
-      }
-    }
-
-    if (videoElement.readyState >= 1) {
-      playVideo()
-    } else {
-      videoElement.onloadedmetadata = () => {
-        playVideo()
-      }
-    }
-  }, [aiReady, cameraStatus])
-
-  // Poll AI status to detect when it's ready
-  useEffect(() => {
-    if (!sessionId || aiReady) return
-
-    const pollAiStatus = async () => {
-      try {
-        const data = await sessionService.getAIStatus(sessionId)
-        const status = data?.status || 'waiting'
-
-        setAiState(status)
-        if (status === 'ready') {
-          setAiReady(true)
-        }
-
-        console.log(`🧠 [AI STATUS] status=${status}`)
-      } catch (err) {
-        console.warn('[AI STATUS] Failed to fetch AI status:', err)
-      }
-    }
-
-    // Poll every 2s until AI is ready (fallback when WebSocket ready signal is missed)
-    aiStatusIntervalRef.current = setInterval(pollAiStatus, 2000)
-    pollAiStatus() // Initial call
-
-    return () => {
-      if (aiStatusIntervalRef.current) {
-        clearInterval(aiStatusIntervalRef.current)
-      }
-    }
-  }, [sessionId, aiReady])
+  
 
   const formatTime = (time) => {
     const pad = (num) => String(num).padStart(2, '0')
@@ -309,25 +246,16 @@ function StudentExam({ onNavigate, examController }) {
 
   const unansweredCount = totalQuestions - answeredCount
 
-  // Show AI initialization screen while AI is initializing
-  if (!aiReady) {
-    return (
-      <>
-        <AIInitializingScreen state={aiState} />
-        <video
-          ref={sidebarVideoRef}
-          autoPlay
-          playsInline
-          muted
-          className="hidden"
-        />
-      </>
-    )
-  }
-
   return (
     <div className="min-h-screen bg-[#030014] text-slate-200 overflow-hidden relative selection:bg-purple-500/30 font-sans">
 
+      {/* ── AI Initialization Overlay ── */}
+      {!aiReady && (
+        <div className="absolute inset-0 z-[1000] bg-[#030014]">
+          <AIInitializingScreen state={aiState} />
+        </div>
+      )}
+      
       {/* ── Submit Confirmation Modal ── */}
       {showSubmitModal && (
         <div className="fixed inset-0 z-[999] flex items-center justify-center p-4">

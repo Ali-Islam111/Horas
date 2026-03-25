@@ -42,6 +42,7 @@ CAM_BUFFER_SIZE   = 1
 # ── Calibration ───────────────────────────────────────────────
 CALIB_SECONDS     = 6       # was 4 — more data = better personal baseline
 CALIB_FPS_EST     = 15
+MAX_CALIB_WAIT    = 60.0    # seconds before skipping calibration if no face is found
 
 # ── Head Pose (solvePnP) ──────────────────────────────────────
 YAW_THRESHOLD     = 35.0    # natural head turn; 35° is well past casual glance

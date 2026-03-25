@@ -86,15 +86,16 @@ class ProctoringManager:
             print(f"[Manager] 🟢 Session {session_id} AI is READY — proctoring active.")
 
             # 1. Write ai_ready_at timestamp to the database
+            db = SessionLocal()
             try:
-                db = SessionLocal()
                 db_session = db.query(ExamSession).filter(ExamSession.id == int(session_id)).first()
                 if db_session:
                     db_session.ai_ready_at = datetime.now(timezone.utc)
                     db.commit()
-                db.close()
             except Exception as e:
                 print(f"[Manager] Failed to write ai_ready_at to database: {e}")
+            finally:
+                db.close()
 
             # 2. Push ai_ready message down the WebSocket to the student
             ready_msg = {"type": "ai_ready"}
@@ -116,6 +117,12 @@ class ProctoringManager:
                 real_student_name = "Unknown Student"
         finally:
             db.close() # Always close the connection to free up memory
+
+        # ─── Clean up old session if reconnecting ──────────────────
+        if session_id in self.active_sessions:
+            print(f"[Manager] ⚠️ Reconnection detected for Session {session_id}. Stopping prior AI thread to prevent memory leak.")
+            old_session = self.active_sessions[session_id]["ai_session"]
+            old_session.stop()
 
         # ─── Initialize the AI Session with REAL Data ──────────────────────────
         ai_session = ProctoringSession(

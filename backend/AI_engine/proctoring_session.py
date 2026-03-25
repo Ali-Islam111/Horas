@@ -342,7 +342,8 @@ class ProctoringSession:
         fps_display     = 0.0
         _roi_pad        = 60
 
-        self._state = "calibrating"
+        self._state      = "calibrating"
+        calib_start_time = time.perf_counter()  # Wall-clock timeout guard
 
         # ── Main loop ────────────────────────────────────────
         while not self._stop_event.is_set():
@@ -383,7 +384,18 @@ class ProctoringSession:
 
             # ── Calibration phase ─────────────────────────────
             if not head_det.calibrated:
-                if run_mp and fres and fres.multi_face_landmarks:
+                # Wall-clock timeout: if the face is not detected within
+                # MAX_CALIB_WAIT seconds, skip calibration and use the
+                # detectors' pre-initialized config defaults. The baseline
+                # is NOT force-set to avoid corrupting AI decisions.
+                calib_elapsed = time.perf_counter() - calib_start_time
+                if calib_elapsed > config.MAX_CALIB_WAIT:
+                    print(f"[Session {self.session_id}] ⚠️ Calibration timed out after "
+                          f"{calib_elapsed:.1f}s — no face detected. "
+                          f"Falling back to config defaults and starting proctoring.")
+                    head_det.calibrated  = True  # Marks loop exit; _base_* stay at 0.0 (config defaults)
+                    gaze_det.calibrated  = True  # Falls back to __init__ zone (config defaults)
+                elif run_mp and fres and fres.multi_face_landmarks:
                     lms = fres.multi_face_landmarks[0].landmark
                     head_det.calibrate_tick(lms)
                     lh = GazeDetector._hr(lms, config.EYE_L_OUTER, config.EYE_L_INNER, config.IRIS_LEFT)
