@@ -323,7 +323,7 @@ def run(student_name: str = "Student", resume_session_id: str = None):
         if run_mp:
             # IMPROVEMENT: run MediaPipe on tight face ROI, not the full frame.
             # Landmarks are returned in ROI-relative coords — remap to full-frame.
-            roi, _roi_offset_x, _roi_offset_y = _get_roi(frame, face_bbox, 20)
+            roi, _roi_offset_x, _roi_offset_y = _get_roi(frame, face_bbox, _roi_pad)
             roi_rgb = cv2.cvtColor(roi, cv2.COLOR_BGR2RGB)
             fres    = _face_mesh.process(roi_rgb)
             # Remap normalized landmark coords from ROI space → full-frame space
