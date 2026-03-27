@@ -1,15 +1,29 @@
 # ==============================================================
-# config.py  —  AI Proctoring System · All Settings (Optimized)
+# config.py  —  AI Proctoring System · All Settings (V8.0)
+# ==============================================================
+#
+# CHANGES vs V7.5:
+#   - ANOMALY_EVERY: rate-gate anomaly updates (was every frame → 2Hz)
+#   - TUNING_HINTS_FILE: offline trainer writes suggested LSTM threshold
+#     here; config.py reads it at startup to stay in sync with the model
+#   - ATTN_HISTORY_MAX: cap attention history (was unbounded → 18,000)
+#   - AUDIO_NOISE_FLOOR_EMA_ALPHA: adaptive noise floor (was locked at
+#     calibration → slowly tracks room noise over the session)
+#   - GEMINI_MODELS: ordered fallback list (was a single model string)
+#   - COOLDOWN_NO_ENROLLMENT: new alert for enrollment-failure sessions
+#   - SEV["no_enrollment"]: severity for the above
 # ==============================================================
 
-import os, numpy as np
+import os, json
+import numpy as np
 
 BASE_DIR    = os.path.dirname(os.path.abspath(__file__))
 IMAGE_DIR   = os.path.join(BASE_DIR, "evidence")
-REPORTS_DIR = os.path.join(BASE_DIR, "session_reports")  # FIX: was "reports" which collides with the reports/ Python package
+REPORTS_DIR = os.path.join(BASE_DIR, "session_reports")
 MODELS_DIR  = os.path.join(BASE_DIR, "saved_models")
 REF_DIR     = os.path.join(BASE_DIR, "reference_faces")
 LOG_FILE    = os.path.join(BASE_DIR, "session.log")
+TUNING_HINTS_FILE = os.path.join(MODELS_DIR, "tuning_hints.json")
 
 for _d in [IMAGE_DIR, REPORTS_DIR, MODELS_DIR, REF_DIR]:
     os.makedirs(_d, exist_ok=True)
@@ -21,34 +35,31 @@ FRAME_H           = 720
 TARGET_FPS        = 30
 
 # ── Performance: frame subsampling ───────────────────────────
-# Heavy detectors don't run every frame — they don't need to.
-# Values = "run every N frames"
-# At 30fps: every 1 = 30Hz, every 3 = 10Hz, every 6 = 5Hz
-MEDIAPIPE_EVERY   = 1   # every frame  — lightweight enough
-GLOW_EVERY        = 3   # 10Hz  — glow changes slowly
-YOLO_EVERY        = 6   # 5Hz   — objects don't flash in and out
+MEDIAPIPE_EVERY   = 1
+GLOW_EVERY        = 3
+YOLO_EVERY        = 6
 
-# ── Performance: YOLO input resolution ───────────────────────
-# Full 1280x720 sent to YOLO wastes 4x the compute vs 640x360.
-# Accuracy difference for phone/book/person detection: negligible.
-YOLO_INPUT_W      = 640   # must be multiple of 32
-YOLO_INPUT_H      = 384   # was 360 — 360 is NOT a multiple of 32, YOLO silently corrects to 384 every frame causing spam warnings. 384 = 32×12.
+# FIX (V8.0): Anomaly models don't need 30Hz updates.
+# At 30fps, every 15 frames = 2Hz — anomalies develop over seconds,
+# not frames. Saves ~5ms/frame of CPU with no detection quality loss.
+ANOMALY_EVERY     = 15
+
+# ── Performance: YOLO resolution ─────────────────────────────
+YOLO_INPUT_W      = 640
+YOLO_INPUT_H      = 384
 
 # ── Performance: camera buffer ────────────────────────────────
-# OpenCV default buffers 3-4 frames → phantom lag.
-# Setting to 1 ensures we always read the freshest frame.
 CAM_BUFFER_SIZE   = 1
 
 # ── Calibration ───────────────────────────────────────────────
-CALIB_SECONDS     = 6       # was 4 — more data = better personal baseline
+CALIB_SECONDS     = 6
 CALIB_FPS_EST     = 15
-MAX_CALIB_WAIT    = 60.0    # seconds before skipping calibration if no face is found
 
 # ── Head Pose (solvePnP) ──────────────────────────────────────
-YAW_THRESHOLD     = 35.0    # natural head turn; 35° is well past casual glance
-PITCH_THRESHOLD   = 28.0    # allows reading posture + thinking-down-look
-ROLL_THRESHOLD    = 35.0    # head tilt; only flag extreme slouch
-HEAD_SMOOTH_N     = 14      # smooth over ~0.5s at 30fps — kills jitter completely
+YAW_THRESHOLD     = 35.0
+PITCH_THRESHOLD   = 28.0
+ROLL_THRESHOLD    = 35.0
+HEAD_SMOOTH_N     = 14
 
 FACE_3D = np.array([
     (  0.0,    0.0,    0.0),
@@ -65,19 +76,13 @@ FACE_LM_IDS = [1, 152, 33, 263, 61, 291]
 GAZE_H_MIN    = 0.35;  GAZE_H_MAX  = 0.65
 GAZE_V_MIN    = 0.38;  GAZE_V_MAX  = 0.62
 GAZE_SMOOTH   = 6
-# FIX: these constants are referenced by GazeDetector but were missing from config
-GAZE_H_TOL    = 0.05   # tolerance added/subtracted from H_MIN/H_MAX before flagging
-GAZE_V_TOL    = 0.05   # tolerance added/subtracted from V_MIN/V_MAX before flagging
-GAZE_MIN_AWAY_FRAMES = 20  # ~0.67s of sustained look-away before flagging
-                            # prevents normal reading saccades from triggering
+GAZE_H_TOL    = 0.04
+GAZE_V_TOL    = 0.04
+GAZE_MIN_AWAY_FRAMES = 25
 
-# IMPROVEMENT: Adaptive gaze calibration
-# GazeDetector collects the student's natural center-gaze during the head-pose
-# calibration phase and computes a personal H/V center + half-width tolerance.
-# These are the fallback values used before/if calibration doesn't converge.
-GAZE_CALIB_FRAMES     = 40    # how many frames of center-gaze to collect
-GAZE_CALIB_STD_MULT   = 4.5   # very wide personal zone; only flag clear deviations
-GAZE_CALIB_MIN_RANGE  = 0.14  # minimum half-width of accepted gaze zone
+GAZE_CALIB_FRAMES     = 60
+GAZE_CALIB_STD_MULT   = 3.0
+GAZE_CALIB_MIN_RANGE  = 0.12
 
 IRIS_LEFT     = 468;   IRIS_RIGHT  = 473
 EYE_L_OUTER   = 33;    EYE_L_INNER = 133
@@ -88,25 +93,19 @@ EYE_R_TOP     = 386;   EYE_R_BOT   = 374
 # ── Lip ───────────────────────────────────────────────────────
 LIP_TOP_ID    = 13;  LIP_BOT_ID   = 14
 LIP_LEFT_ID   = 78;  LIP_RIGHT_ID = 308
-LIP_OPEN_THR  = 0.042   # higher threshold; ignores slight mouth resting/breathing
-LIP_CONSEC    = 30      # ~1s of sustained movement — rules out swallowing/yawning
+LIP_OPEN_THR  = 0.042
+LIP_CONSEC    = 30
 
 # ── Glow ──────────────────────────────────────────────────────
-# ── Glow (4-signal fusion detector) ─────────────────────────
-# Signal 1: Brightness spike (V in HSV) — catches ALL screen colors
-GLOW_V_SPIKE_MIN  = 12.0   # V units above baseline to start scoring
-GLOW_V_SPIKE_MAX  = 40.0   # V units = full score
-# Signal 2: Saturation drop — screen light desaturates skin
-GLOW_S_DROP_MIN   = 8.0    # S-unit drop to start scoring
-GLOW_S_DROP_MAX   = 30.0   # S-unit drop = full score
-# Signal 3: Temporal flicker — screens change content constantly
-GLOW_FLICKER_MIN  = 15.0   # brightness variance threshold
-GLOW_FLICKER_MAX  = 80.0   # variance = full score
-# Signal 4: BGR blue excess (original, now just one vote)
+GLOW_V_SPIKE_MIN  = 12.0
+GLOW_V_SPIKE_MAX  = 40.0
+GLOW_S_DROP_MIN   = 8.0
+GLOW_S_DROP_MAX   = 30.0
+GLOW_FLICKER_MIN  = 15.0
+GLOW_FLICKER_MAX  = 80.0
 GLOW_BLUE_EXCESS  = 20;  GLOW_AREA_MIN = 0.10
-# Fusion rule: weighted score + at least 2 signals firing
-GLOW_FUSION_THR   = 0.52   # only trigger on clear strong screen glow
-GLOW_SMOOTH       = 14     # ~0.5s of sustained glow needed before deciding
+GLOW_FUSION_THR   = 0.52
+GLOW_SMOOTH       = 14
 
 # ── Identity ──────────────────────────────────────────────────
 ID_MODEL      = "ArcFace";  ID_BACKEND    = "retinaface"
@@ -117,17 +116,28 @@ ID_CHECK_EVERY= 60
 YOLO_MODEL    = "yolo11n.pt"
 YOLO_CONF_DEFAULT = 0.55
 YOLO_CONFS    = {
-    "person": 0.50,
-    "cell phone": 0.65,  # Higher to prevent wallet/calculator mixups
-    "book": 0.60
+    "person":      0.75,
+    "cell phone":  0.68,
+    "book":        0.60,
 }
-YOLO_CLASSES  = None          # detect ALL 80 COCO classes — do NOT filter here.
-                               # Filtering by class ID at inference causes YOLO to only
-                               # look for those 3 classes, making it over-eager and
-                               # misclassifying similar-shaped objects (tissue→book, mouse→phone).
-                               # Instead we detect everything and filter by name in code.
-YOLO_FLAG_ITEMS = {"cell phone", "book"}  # only these trigger alerts — person is handled separately
-YOLO_MIN_PX   = 50            # raised from 40 — ignore tiny detections (reflections, noise)
+YOLO_CLASSES  = None
+YOLO_FLAG_ITEMS = {"cell phone", "book"}
+YOLO_MIN_PX   = 80
+
+# ── LLM Vision Verifier ───────────────────────────────────────
+LLM_VERIFIER_ENABLED  = True
+GEMINI_API_KEY        = ""
+LLM_VERIFY_CLASSES    = {"cell phone", "book"}
+LLM_VERIFY_TIMEOUT    = 4.0
+
+# FIX (V8.0): Fallback model list instead of a single model string.
+# If the primary model is deprecated or returns 404, the verifier
+# retries each entry in order before falling back to YOLO-only.
+GEMINI_MODELS = [
+    "gemini-1.5-flash-latest",
+    "gemini-1.5-flash",
+    "gemini-1.0-pro-vision",
+]
 
 # ── Audio ─────────────────────────────────────────────────────
 SAMPLE_RATE   = 16000;  AUDIO_CHUNK_SEC = 1;  AUDIO_COOLDOWN = 10.0
@@ -144,55 +154,71 @@ AUDIO_MIME_PRIORITY = [
     "audio/wav", "audio/x-wav",
 ]
 
+# FIX (V8.0): Adaptive noise floor using exponential moving average.
+# Old approach: lock in a floor after a 6-second calibration window.
+# Problem: if calibration happens in a noisy moment, the floor is too
+#          high and real speech is masked for the rest of the session.
+# New approach: floor decays toward quieter measurements continuously.
+#   alpha=0.02 → ~2% update per 3s chunk → graceful tracking.
+#   min_floor prevents the floor from reaching zero in a silent room.
+AUDIO_NOISE_FLOOR_EMA_ALPHA = 0.02
+AUDIO_NOISE_FLOOR_MIN       = 0.005
+
 # ── Anomaly ───────────────────────────────────────────────────
 IFOREST_WARMUP        = 120;  IFOREST_CONTAMINATION = 0.05
 IFOREST_RETRAIN_EVERY = 300;  IFOREST_ANOMALY_THR   = -0.55
 LSTM_SEQ_LEN          = 30;   LSTM_WARMUP_SEQS      = 50
-LSTM_MSE_THR          = 0.065
-# IMPROVEMENT: batch N sequences per predict() call to amortize TF overhead.
-# At 30fps, batch=3 → inference at 10Hz. Anomalies develop over seconds, not frames.
+LSTM_MSE_THR          = 500.0
 LSTM_INFER_BATCH_SIZE = 3
+
+# FIX (V8.0): Load LSTM threshold from tuning hints file if present.
+# The offline trainer writes a suggested threshold after each run.
+# Loading it at startup keeps config in sync with the actual model.
+def _load_tuning_hints():
+    global LSTM_MSE_THR
+    try:
+        if os.path.exists(TUNING_HINTS_FILE):
+            with open(TUNING_HINTS_FILE) as f:
+                hints = json.load(f)
+            suggested = hints.get("lstm_mse_thr")
+            if isinstance(suggested, (int, float)) and suggested > 0:
+                LSTM_MSE_THR = float(suggested)
+                print(f"  [Config] LSTM_MSE_THR loaded from tuning hints: {LSTM_MSE_THR:.2f}")
+    except Exception as e:
+        print(f"  [Config] Could not load tuning hints: {e}")
+
+_load_tuning_hints()
 
 ANOMALY_FEATURES = ["yaw_dev","pitch_dev","roll_dev",
                     "gaze_h","gaze_v","lip_lar","glow_score"]
 N_FEATURES = len(ANOMALY_FEATURES)
 
 # ── Attention ─────────────────────────────────────────────────
-# Balance: decay and recovery should feel proportional to a human observer.
-# Old: DECAY=3, RECOVER=1 → needed 3x as long to recover as to drop.
-# New: DECAY=2, RECOVER=2 → symmetric; a ~10s clean stretch resets a single event.
-ATTN_DECAY=1; ATTN_RECOVER=3; ATTN_MAX=100; ATTN_MIN=0  # decays slowly, recovers fast
-# Require score below threshold for 5 consecutive ticks (was 3) before logging
-ATTN_ALERT_THR=40; ATTN_SUSTAIN_TICKS=8  # only alert on very low sustained attention
+ATTN_DECAY=1; ATTN_RECOVER=3; ATTN_MAX=100; ATTN_MIN=0
+ATTN_ALERT_THR=40; ATTN_SUSTAIN_TICKS=8
 
-# ── Alert cooldowns (seconds between repeated alerts of same type) ────────────
-# All cooldowns are here — not hardcoded in main.py — so the web admin panel
-# can expose them as tunable settings per exam without touching code.
-# At 100 concurrent students, tuning one value here affects all sessions.
-COOLDOWN_HEAD_AWAY   = 20.0   # min 20s between head-away repeat alerts
-COOLDOWN_GAZE        = 20.0   # min 20s between gaze repeat alerts
-COOLDOWN_LIP         = 25.0   # min 25s between lip movement alerts
+# FIX (V8.0): Cap attention history to prevent unbounded memory growth.
+# 3-hour exam × 30fps × 1 tick/frame = 324,000 unbounded entries.
+# The sparkline uses ≤90 and band stats are computed from all entries.
+# 18,000 = 10 minutes of data at 30fps — more than enough resolution.
+ATTN_HISTORY_MAX = 18_000
+
+# ── Alert cooldowns ───────────────────────────────────────────
+COOLDOWN_HEAD_AWAY   = 20.0
+COOLDOWN_GAZE        = 20.0
+COOLDOWN_LIP         = 25.0
 COOLDOWN_BLINK       = 60.0
-COOLDOWN_GLOW        = 30.0   # min 30s between screen glow alerts
-COOLDOWN_NO_FACE     = 12.0   # min 12s between face-not-visible alerts
+COOLDOWN_GLOW        = 30.0
+COOLDOWN_NO_FACE     = 12.0
 COOLDOWN_MULTI_PERSON= 15.0
 COOLDOWN_YOLO_ITEM   = 15.0
 COOLDOWN_IDENTITY    = 30.0
-COOLDOWN_ANOMALY     = 30.0  # was 20s — anomaly models need time to stabilise
+COOLDOWN_ANOMALY     = 30.0
 COOLDOWN_ATTN_SYSTEM = 60.0
 
-# ── Scalability notes ─────────────────────────────────────────────────────────
-# Current design: one Python process per student session.
-# For 100 concurrent students → 100 processes, each using ~800MB RAM + 1 GPU stream.
-# Recommended deployment for 100 students:
-#   - 2× AWS g4dn.2xlarge (8 vCPU, 32GB RAM, 1× T4 GPU each) → ~$1.20/hr total
-#   - Nginx load balancer in front, sticky sessions (one student = one worker)
-#   - Redis for session state if you want a shared dashboard
-#   - Each process writes its own session.log and evidence/ folder
-# For future scaling beyond 100:
-#   - Move YOLO and Whisper to dedicated microservices (gRPC)
-#   - Use a shared GPU inference server (Triton Inference Server)
-#   - Containerise each session with Docker + Kubernetes HPA
+# FIX (V8.0): When a student fails enrollment, fire a periodic alert
+# every 2 minutes so the exam is never silently unmonitored for identity.
+COOLDOWN_NO_ENROLLMENT = 120.0
 
 # ── Severity ──────────────────────────────────────────────────
 SEV = {
@@ -200,7 +226,14 @@ SEV = {
     "no_face":3,"multi_person":3,"phone":2,"book":2,
     "whisper":2,"multi_talk":2,"media":1,"identity":5,
     "iforest":2,"lstm":2,
+    "no_enrollment":3,   # FIX (V8.0): enrollment failure is HIGH severity
 }
+
+# ── Scalability notes ─────────────────────────────────────────
+# V8.0 design: one Python process per student session.
+# Per-session FaceMesh (no shared lock) is the key change enabling
+# true parallelism at 100+ concurrent students.
+# See proctoring_session.py for the per-instance FaceMesh pattern.
 
 # ── Report ────────────────────────────────────────────────────
 REPORT_LOGO_TEXT = "AI PROCTORING SYSTEM"

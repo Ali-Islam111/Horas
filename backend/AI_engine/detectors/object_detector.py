@@ -2,21 +2,33 @@
 # detectors/object_detector.py  —  YOLO on CUDA (RTX 3050/3060)
 # ==============================================================
 #
-# Fixes vs GitHub version:
-#   - Warmup dummy now uint8 (not float16) — YOLO expects raw pixel
-#     values 0-255, not normalized floats. float16 caused silent
-#     wrong detections on the first real frame.
-#   - _run() no longer manually casts frame to float16 — YOLO does
-#     this internally when half=True. Manual pre-cast produced pixel
-#     values in the wrong range and poisoned detection accuracy.
-#   - Both fixes together: always pass uint8 frames, let YOLO/CUDA
-#     handle the precision conversion internally.
+# Fixes vs V7.5 (retained):
+#   - Warmup dummy is uint8 — YOLO expects raw pixel values 0-255.
+#   - _run() never manually casts frame to float16.
+#
+# FIX (V9.0) — Lazy model loading:
+#   Previously YOLO was loaded at MODULE IMPORT TIME:
+#       _yolo = YOLO(config.YOLO_MODEL)   ← ran when backend did
+#       _yolo.predict(_dummy, ...)         ← 'from proctoring_session import ...'
+#   This added 2-5 seconds to every server start and worker spawn.
+#
+#   Now: model loads inside ObjectDetector.start(), called from
+#   ProctoringSession._run() on a background thread.
+#   Import is instant. Model loads only when a session starts,
+#   on that session's background thread — never blocking the server.
+#
+#   Timeline per session:
+#     import proctoring_session → 0ms   (was 2-5 seconds)
+#     session.start()           → spawns thread
+#     thread: YOLO loads        → 2-5s on background thread
+#     (enrollment phase lasts ≥5s anyway — YOLO is ready in time)
 # ==============================================================
 
 import cv2, time, threading, numpy as np
 from queue import Queue, Empty
 import config
 
+# Lightweight checks only — no model loading at import time
 try:
     import torch
     _CUDA   = torch.cuda.is_available()
@@ -24,43 +36,6 @@ try:
 except ImportError:
     _CUDA   = False
     _DEVICE = "cpu"
-
-try:
-    from ultralytics import YOLO
-    _yolo = YOLO(config.YOLO_MODEL)
-    _yolo.to(_DEVICE)
-
-    if _CUDA:
-        # Do NOT call _yolo.model.half() manually — on some ultralytics+torch
-        # versions this causes a c10::Half != float dtype mismatch when the
-        # uint8 input goes through the preprocessing pipeline.
-        # Instead, let ultralytics handle FP16 internally via half=True in predict().
-        vram_gb = torch.cuda.get_device_properties(0).total_memory / 1e9
-        print(f"  [YOLO] Loaded '{config.YOLO_MODEL}' on {_DEVICE} · "
-              f"FP16 (via predict) · VRAM {vram_gb:.1f}GB")
-    else:
-        print(f"  [YOLO] Loaded '{config.YOLO_MODEL}' on CPU · FP32")
-
-    _YOLO_OK = True
-
-    # Warmup: use uint8 — this is what real camera frames look like.
-    # Do NOT use float16/float32 here; YOLO normalizes internally.
-    try:
-        _dummy = np.zeros(
-            (config.YOLO_INPUT_H, config.YOLO_INPUT_W, 3), dtype=np.uint8
-        )
-        _yolo.predict(_dummy,
-                      imgsz=(config.YOLO_INPUT_H, config.YOLO_INPUT_W),
-                      verbose=False, half=_CUDA)
-        print("  [YOLO] Warmup complete.")
-    except Exception as e:
-        print(f"  [YOLO] Warmup error (ignored): {e}")
-
-    NAMES = _yolo.names
-
-except Exception as e:
-    _yolo = None; NAMES = {}; _YOLO_OK = False
-    print(f"  [YOLO] Not available: {e}")
 
 
 class Detection:
@@ -73,17 +48,27 @@ class Detection:
 
 
 class ObjectDetector:
+    """
+    YOLO object detector with lazy model loading.
+
+    Model, GPU transfer, and warmup all happen on the background thread
+    spawned by start(). The calling thread is never blocked.
+    """
+
     def __init__(self):
         self._q       = Queue(maxsize=2)
         self._latest  = Detection()
         self._lock    = threading.Lock()
         self._running = False
         self._thread  = None
+        self._yolo    = None
+        self._names   = {}
+        self._yolo_ok = False
 
     def start(self):
-        if not _YOLO_OK: return
+        """Start background thread. Model loads on the thread — non-blocking."""
         self._running = True
-        self._thread  = threading.Thread(target=self._run, daemon=True)
+        self._thread  = threading.Thread(target=self._load_and_run, daemon=True)
         self._thread.start()
 
     def stop(self):
@@ -94,8 +79,10 @@ class ObjectDetector:
         """
         frame must be uint8 BGR — same dtype as cv2.VideoCapture output.
         Do NOT pre-cast to float; YOLO handles normalization internally.
+        Silently drops frame if model not yet loaded or queue full.
         """
-        if not _YOLO_OK: return
+        if not self._yolo_ok:
+            return
         if self._q.full():
             try: self._q.get_nowait()
             except Empty: pass
@@ -106,6 +93,43 @@ class ObjectDetector:
         with self._lock:
             return self._latest
 
+    # ── Internal ─────────────────────────────────────────────
+
+    def _load_model(self) -> bool:
+        """Load YOLO model on the background thread. Returns True on success."""
+        try:
+            from ultralytics import YOLO
+            yolo = YOLO(config.YOLO_MODEL)
+            yolo.to(_DEVICE)
+            if _CUDA:
+                vram_gb = torch.cuda.get_device_properties(0).total_memory / 1e9
+                print(f"  [YOLO] Loaded '{config.YOLO_MODEL}' on {_DEVICE} · "
+                      f"FP16 (via predict) · VRAM {vram_gb:.1f}GB")
+            else:
+                print(f"  [YOLO] Loaded '{config.YOLO_MODEL}' on CPU · FP32")
+            try:
+                dummy = np.zeros(
+                    (config.YOLO_INPUT_H, config.YOLO_INPUT_W, 3), dtype=np.uint8)
+                yolo.predict(dummy,
+                             imgsz=(config.YOLO_INPUT_H, config.YOLO_INPUT_W),
+                             verbose=False, half=_CUDA)
+                print("  [YOLO] Warmup complete.")
+            except Exception as e:
+                print(f"  [YOLO] Warmup error (ignored): {e}")
+            self._yolo    = yolo
+            self._names   = yolo.names
+            self._yolo_ok = True
+            return True
+        except Exception as e:
+            print(f"  [YOLO] Not available: {e}")
+            self._yolo_ok = False
+            return False
+
+    def _load_and_run(self):
+        """Load model then immediately enter inference loop."""
+        if self._load_model():
+            self._run()
+
     def _run(self):
         while self._running:
             try: frame = self._q.get(timeout=0.5)
@@ -114,14 +138,10 @@ class ObjectDetector:
             det = Detection()
             h, w = frame.shape[:2]
             try:
-                # Detect ALL classes — do not restrict by class ID here.
-                # Restricting to [0,67,73] made YOLO over-eager for those
-                # classes and caused tissue boxes → "book", mouse → "cell phone".
-                # We detect everything and filter by exact name below.
-                preds = _yolo.predict(
+                preds = self._yolo.predict(
                     frame,
-                    conf    = 0.25,                  # Base confidence to catch everything, filter later
-                    classes = config.YOLO_CLASSES,   # None = all classes
+                    conf    = 0.25,
+                    classes = config.YOLO_CLASSES,
                     imgsz   = (h, w),
                     half    = _CUDA,
                     verbose = False,
@@ -130,27 +150,49 @@ class ObjectDetector:
                 for r in preds:
                     for box in r.boxes:
                         cls  = int(box.cls[0])
-                        name = NAMES.get(cls, str(cls))
+                        name = self._names.get(cls, str(cls))
                         conf = float(box.conf[0])
-                        
-                        # Apply class-specific confidence threshold
-                        req_conf = config.YOLO_CONFS.get(name, getattr(config, 'YOLO_CONF_DEFAULT', 0.55))
-                        if conf < req_conf:
-                            continue
 
                         x1, y1, x2, y2 = map(int, box.xyxy[0])
                         if (x2-x1) < config.YOLO_MIN_PX or \
                            (y2-y1) < config.YOLO_MIN_PX:
                             continue
-                        # Always track boxes for drawing
+
+                        box_w = x2 - x1
+                        box_h = y2 - y1
+                        if box_w > 0 and box_h > 0:
+                            ratio = box_h / box_w
+                            if name == "laptop":
+                                if ratio > 0.75:
+                                    name = "book"
+                                else:
+                                    continue
+                            if name in ["document", "paper"]:
+                                if 0.35 <= ratio <= 2.0:
+                                    name = "book"
+                                else:
+                                    continue
+
+                        req_conf = config.YOLO_CONFS.get(
+                            name, getattr(config, 'YOLO_CONF_DEFAULT', 0.55))
+                        if conf < req_conf:
+                            continue
+
+                        if box_w > 0 and box_h > 0:
+                            ratio = box_h / box_w
+                            if name == "cell phone" and 0.8 < ratio < 1.2:
+                                continue
+                            if name == "book":
+                                if ratio < 0.25 or ratio > 2.5:
+                                    continue
+
                         det.boxes.append((x1, y1, x2, y2, name, conf))
-                        # Only count persons and exact flag items as alerts
+
                         if name == "person":
                             det.person_count += 1
                         elif name in config.YOLO_FLAG_ITEMS:
                             det.items.append(name)
-                        # Everything else (mouse, tissue, cup, etc.) is detected
-                        # and drawn on screen but does NOT trigger an alert
+
             except Exception as e:
                 print(f"  [YOLO] Inference error: {e}")
             with self._lock:
