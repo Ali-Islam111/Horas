@@ -54,6 +54,7 @@ CAM_BUFFER_SIZE   = 1
 # ── Calibration ───────────────────────────────────────────────
 CALIB_SECONDS     = 6
 CALIB_FPS_EST     = 15
+MAX_CALIB_WAIT    = 60.0    # seconds before skipping calibration if no face is found
 
 # ── Head Pose (solvePnP) ──────────────────────────────────────
 YAW_THRESHOLD     = 35.0

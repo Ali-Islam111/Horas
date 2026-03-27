@@ -42,10 +42,10 @@ class ProctoringManager:
         """
         if session_id in self._ready_sessions:
             return "ready"
-        if session_id in self._failed_sessions:
-            return "failed"
         if session_id in self.active_sessions:
             return "initializing"
+        if session_id in self._failed_sessions:
+            return "failed"
         return "waiting"
 
     async def connect(self, session_id: str, websocket: WebSocket):
@@ -101,6 +101,13 @@ class ProctoringManager:
             ready_msg = {"type": "ai_ready"}
             asyncio.run_coroutine_threadsafe(websocket.send_json(ready_msg), loop)
 
+        def handle_failed():
+            """Fired once when ProctoringSession fails to start (Runs on background thread)."""
+            # Mutual exclusion: once we know it failed, it is no longer "ready".
+            self._failed_sessions.add(session_id)
+            self._ready_sessions.discard(session_id)
+            print(f"[Manager] 🔴 Session {session_id} AI failed to initialize.")
+
         # ─── FETCH THE REAL STUDENT FROM THE DATABASE ──────────────────────────
         # Open a quick, temporary database connection
         db = SessionLocal()
@@ -124,13 +131,18 @@ class ProctoringManager:
             old_session = self.active_sessions[session_id]["ai_session"]
             old_session.stop()
 
+            # Clear readiness state — new session must re-earn it
+            self._ready_sessions.discard(session_id)
+            self._failed_sessions.discard(session_id)
+
         # ─── Initialize the AI Session with REAL Data ──────────────────────────
         ai_session = ProctoringSession(
             student_id=real_student_id, 
             student_name=real_student_name, 
             session_id=session_id,
             on_alert=handle_alert,
-            on_ready=handle_ready
+            on_ready=handle_ready,
+            on_failed=handle_failed,
         )
         
         ai_session.start()
@@ -152,11 +164,15 @@ class ProctoringManager:
             
             print(f"[Manager] 🛑 Stopping Session {session_id}. Generating PDF...")
             report = ai_session.stop() 
+            if not report.get("shutdown_clean", True):
+                print(f"[Manager] ⚠️ Session {session_id} ended with a crash. PDF may be incomplete.")
             print(f"[Manager] 📄 PDF Report generated at: {report.get('pdf_path')}")
             
             del self.active_sessions[session_id]
             # Clean up readiness tracking
             self._ready_sessions.discard(session_id)
-            self._failed_sessions.discard(session_id)
+            # Keep failed state only if shutdown was not clean.
+            if report.get("shutdown_clean", True):
+                self._failed_sessions.discard(session_id)
 
 manager = ProctoringManager()

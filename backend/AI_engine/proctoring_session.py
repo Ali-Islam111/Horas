@@ -147,8 +147,12 @@ class ProctoringSession:
                  student_id:   str,
                  student_name: str      = "Student",
                  on_alert:     callable = None,
+                 on_ready:     callable = None,
+                 on_failed:    callable = None,
                  session_id:   str      = None):
         self.student_id   = student_id
+        self._on_ready = on_ready
+        self._on_failed= on_failed
         self.student_name = student_name
         # FIX E (V9.0): 12-char ID — 281 trillion combinations vs 4 billion
         self.session_id   = (session_id or uuid.uuid4().hex[:12]).upper()
@@ -274,6 +278,12 @@ class ProctoringSession:
             import traceback; traceback.print_exc()
             self._thread_crashed = True
             self._state = "stopped"
+            # Startup-feature integration: notify backend that AI failed.
+            if self._on_failed:
+                try:
+                    self._on_failed()
+                except Exception as cb_e:
+                    print(f"[Session {self.session_id}] on_failed callback error: {cb_e}")
 
     def _run(self):
         # FIX 3: per-session AlertHook — no shared global
@@ -303,6 +313,12 @@ class ProctoringSession:
         if not _MP_OK:
             print(f"[Session {self.session_id}] MediaPipe unavailable — stopping.")
             self._state = "stopped"
+            # Startup-feature integration: treat missing MediaPipe as init failure.
+            if self._on_failed:
+                try:
+                    self._on_failed()
+                except Exception as cb_e:
+                    print(f"[Session {self.session_id}] on_failed callback error: {cb_e}")
             return
 
         face_mesh = _mp_mesh.FaceMesh(
@@ -352,8 +368,10 @@ class ProctoringSession:
         fps_display    = 0.0
         _roi_pad       = 60
 
-        self._state = "calibrating"
-
+        self._state      = "calibrating"
+        calib_start_time = time.perf_counter()  # Wall-clock timeout guard
+    
+        # ── Main loop ────────────────────────────────────────
         while not self._stop_event.is_set():
             try:
                 frame_bytes = self.frame_queue.get(timeout=1.0)
@@ -396,7 +414,18 @@ class ProctoringSession:
 
             # ── Calibration ───────────────────────────────────
             if not head_det.calibrated:
-                if run_mp and fres and fres.multi_face_landmarks:
+                # Wall-clock timeout: if the face is not detected within
+                # MAX_CALIB_WAIT seconds, skip calibration and use the
+                # detectors' pre-initialized config defaults. The baseline
+                # is NOT force-set to avoid corrupting AI decisions.
+                calib_elapsed = time.perf_counter() - calib_start_time
+                if calib_elapsed > config.MAX_CALIB_WAIT:
+                    print(f"[Session {self.session_id}] ⚠️ Calibration timed out after "
+                          f"{calib_elapsed:.1f}s — no face detected. "
+                          f"Falling back to config defaults and starting proctoring.")
+                    head_det.calibrated  = True  # Marks loop exit; _base_* stay at 0.0 (config defaults)
+                    gaze_det.calibrated  = True  # Falls back to __init__ zone (config defaults)
+                elif run_mp and fres and fres.multi_face_landmarks:
                     lms = fres.multi_face_landmarks[0].landmark
                     head_det.calibrate_tick(lms)
                     lh = GazeDetector._hr(lms, config.EYE_L_OUTER, config.EYE_L_INNER, config.IRIS_LEFT)
@@ -413,6 +442,11 @@ class ProctoringSession:
             if self._state == "calibrating":
                 self._state = "active"
                 print(f"[Session {self.session_id}] Calibration done — proctoring active.")
+                if self._on_ready:
+                    try:
+                        self._on_ready()
+                    except Exception as e:
+                        print(f"[Session {self.session_id}] on_ready callback error: {e}")
 
             # ── Active proctoring ─────────────────────────────
             if run_mp and fres and fres.multi_face_landmarks:
@@ -616,9 +650,10 @@ class ProctoringSession:
             )
 
     def _make_alert_handler(self):
-        def _handle(source: str, event_type: str, severity: int):
-            with self._lock:
-                latest = self._events[-1] if self._events else {}
+        def _handle(source: str, event_type: str, severity: int, record: dict = None):
+            if record is None:
+                with self._lock:
+                    record = self._events[-1] if self._events else {}
             try:
                 self._on_alert({
                     "session_id":  self.session_id,
@@ -626,9 +661,9 @@ class ProctoringSession:
                     "source":      source,
                     "event_type":  event_type,
                     "severity":    severity,
-                    "timestamp":   latest.get("timestamp", ""),
-                    "details":     latest.get("details", ""),
-                    "screenshot":  latest.get("screenshot", ""),
+                    "timestamp":   record.get("timestamp", ""),
+                    "details":     record.get("details", ""),
+                    "screenshot":  record.get("screenshot", ""),
                 })
             except Exception as e:
                 print(f"[Session {self.session_id}] on_alert callback error: {e}")
