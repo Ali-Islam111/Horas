@@ -28,8 +28,9 @@ class ScoringEngine:
             if not student_raw_answer or not q.correct_choice:
                 continue
 
-            student_answer = str(student_raw_answer).strip().upper()
-            correct_answer = str(q.correct_choice).strip().upper()
+            # Compare submitted literal option text to stored literal correct option.
+            student_answer = str(student_raw_answer).strip().casefold()
+            correct_answer = str(q.correct_choice).strip().casefold()
 
             if student_answer == correct_answer:
                 earned_points += q.points

@@ -69,16 +69,16 @@ def seed_database():
             exam_id=sample_exam.id,
             question_text="Explain the time complexity of QuickSort.",
             question_type="multiple_choice",
-            choice=["O(1)", "O(n)", "O(n log n)", "O(n^2)"],  # A=O(1), B=O(n), C=O(n log n), D=O(n^2)
-            correct_choice="C"
+            choice=["O(1)", "O(n)", "O(n log n)", "O(n^2)"],
+            correct_choice="O(n log n)"
         )
         
         q2 = Question(
             exam_id=sample_exam.id,
             question_text="Which data structure uses LIFO?",
             question_type="multiple_choice",
-            choice=["Queue", "Stack", "Tree", "Graph"], # A=Queue, B=Stack, C=Tree, D=Graph
-            correct_choice="B"
+            choice=["Queue", "Stack", "Tree", "Graph"],
+            correct_choice="Stack"
         )
         
         db.add_all([q1, q2])
