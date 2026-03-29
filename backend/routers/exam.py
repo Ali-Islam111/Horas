@@ -5,7 +5,7 @@ from typing import List
 from core.database import get_db
 from core.dependencies import get_current_user, get_current_teacher
 from core import crud
-from schemas.exam import ExamCreate, ExamResponse
+from schemas.exam import ExamCreate, ExamCreateBatch, ExamResponse
 
 router = APIRouter(
     prefix="/exams",
@@ -14,7 +14,7 @@ router = APIRouter(
 
 @router.post("/", response_model=ExamResponse, status_code=status.HTTP_201_CREATED)
 def create_exam(
-    exam: ExamCreate, 
+    exam: ExamCreateBatch, 
     db: Session = Depends(get_db),
     current_teacher = Depends(get_current_teacher)
 ):
@@ -26,7 +26,7 @@ def create_exam(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="An exam with this access code already exists."
         )
-    return crud.create_exam(db=db, exam=exam, teacher_id=current_teacher.id)
+    return crud.create_exam_with_questions(db=db, exam_data=exam, teacher_id=current_teacher.id)
 
 @router.get("/my-exams", response_model=List[ExamResponse])
 def get_my_exams(

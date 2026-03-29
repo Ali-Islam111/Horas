@@ -1,7 +1,8 @@
 from sqlalchemy.orm import Session
 from typing import List
 from models.exam import Exam
-from schemas.exam import ExamCreate
+from models.questions import Question
+from schemas.exam import ExamCreate, ExamCreateBatch
 
 def create_exam(db: Session, exam: ExamCreate, teacher_id: int):
     db_exam = Exam(
@@ -9,6 +10,26 @@ def create_exam(db: Session, exam: ExamCreate, teacher_id: int):
         teacher_id=teacher_id
     )
     db.add(db_exam)
+    db.commit()
+    db.refresh(db_exam)
+    return db_exam
+
+def create_exam_with_questions(db: Session, exam_data: ExamCreateBatch, teacher_id: int):
+    exam_dict = exam_data.model_dump(exclude={"questions"})
+    db_exam = Exam(
+        **exam_dict,
+        teacher_id=teacher_id
+    )
+    db.add(db_exam)
+    db.flush() 
+
+    for q in exam_data.questions:
+        db_question = Question(
+            **q.model_dump(),
+            exam_id=db_exam.id
+        )
+        db.add(db_question)
+
     db.commit()
     db.refresh(db_exam)
     return db_exam

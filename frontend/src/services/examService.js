@@ -48,6 +48,9 @@ export const examService = {
         description: examData.description || '',
         access_code: examData.access_code || examData.accessCode,
         duration_minutes: examData.duration_minutes || examData.duration || 30,
+        total_marks: examData.total_marks || examData.totalMarks || 100,
+        passing_marks: examData.passing_marks || examData.passingMarks || 50,
+        questions: examData.questions || [],
       }),
     });
     if (!response.ok) {

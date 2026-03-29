@@ -52,16 +52,16 @@ export function useExamController(onNavigate) {
     setIsLoading(true);
     setError(null);
     try {
-      // 1. Create the exam
-      const newExam = await examService.createExam(examData);
+      // Bundle questions for batch creation
+      const payload = {
+        ...examData,
+        questions: parsedQuestions.length > 0 ? examService.formatParsedQuestions(parsedQuestions) : [],
+      };
 
-      // 2. Add all questions if any (from file parser or manual input)
-      if (parsedQuestions.length > 0) {
-        const formatted = examService.formatParsedQuestions(parsedQuestions);
-        await examService.addQuestions(newExam.id, formatted);
-      }
+      // Create the exam + questions automatically via backend transaction
+      const newExam = await examService.createExam(payload);
 
-      // 3. Reload exams list
+      // Reload exams list
       await loadExams();
       return newExam;
     } catch (err) {

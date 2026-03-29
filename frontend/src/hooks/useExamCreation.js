@@ -7,14 +7,22 @@ import { parseExamFileWithGemini } from '../services/geminiService';
 export const useExamCreation = () => {
   const generateAccessCode = () => `EX-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
 
+  // Hydrate draft from localStorage
+  const getDraft = () => {
+    try {
+      return JSON.parse(localStorage.getItem('exam_draft')) || {};
+    } catch { return {}; }
+  };
+  const draft = getDraft();
+
   // State management
-  const [examTitle, setExamTitle] = useState('');
-  const [examDescription, setExamDescription] = useState('');
-  const [accessCode, setAccessCode] = useState(generateAccessCode());
-  const [duration, setDuration] = useState('');
-  const [totalMarks, setTotalMarks] = useState('');
-  const [passingMarks, setPassingMarks] = useState('');
-  const [questions, setQuestions] = useState([]);
+  const [examTitle, setExamTitle] = useState(draft.examTitle || '');
+  const [examDescription, setExamDescription] = useState(draft.examDescription || '');
+  const [accessCode, setAccessCode] = useState(draft.accessCode || generateAccessCode());
+  const [duration, setDuration] = useState(draft.duration || '');
+  const [totalMarks, setTotalMarks] = useState(draft.totalMarks || '');
+  const [passingMarks, setPassingMarks] = useState(draft.passingMarks || '');
+  const [questions, setQuestions] = useState(draft.questions || []);
 
   const normalizeQuestion = (question, index = 0) => {
     const options = Array.isArray(question.options) && question.options.length > 0
@@ -62,12 +70,22 @@ export const useExamCreation = () => {
       question_type: question.type === 'truefalse' ? 'TF' : 'MCQ',
       choice: safeOptions,
       correct_choice: correctChoiceText,
+      points: Number(question.marks) || 1,
     };
   };
 
   // Wizard state
-  const [currentStep, setCurrentStep] = useState(1);
+  const [currentStep, setCurrentStep] = useState(draft.currentStep || 1);
   const [stepErrors, setStepErrors] = useState({});
+
+  // Save to localStorage on changes
+  useEffect(() => {
+    const draftData = {
+      examTitle, examDescription, accessCode, duration,
+      totalMarks, passingMarks, questions, currentStep
+    };
+    localStorage.setItem('exam_draft', JSON.stringify(draftData));
+  }, [examTitle, examDescription, accessCode, duration, totalMarks, passingMarks, questions, currentStep]);
 
   const nextStep = () => {
     if (currentStep === 1) {
@@ -221,11 +239,18 @@ export const useExamCreation = () => {
 
   // Submit exam
   const handleSubmit = async () => {
+    const backendQuestions = questions
+      .filter((q) => q.question?.trim())
+      .map(toBackendQuestion);
+
     const examData = {
       title: examTitle.trim(),
       description: examDescription.trim(),
       duration_minutes: parseInt(duration) || 30,
+      total_marks: parseInt(totalMarks) || 100,
+      passing_marks: parseInt(passingMarks) || 50,
       access_code: accessCode.trim(),
+      questions: backendQuestions,
     };
 
     // Validate exam data
@@ -237,13 +262,6 @@ export const useExamCreation = () => {
 
     try {
       const newExam = await examService.createExam(examData);
-      const backendQuestions = questions
-        .filter((q) => q.question?.trim())
-        .map(toBackendQuestion);
-
-      if (backendQuestions.length > 0) {
-        await examService.addQuestions(newExam.id, backendQuestions);
-      }
 
       alert('Exam created successfully!');
       // Reset form
@@ -271,6 +289,7 @@ export const useExamCreation = () => {
     setParseError('');
     setCurrentStep(1);
     setStepErrors({});
+    localStorage.removeItem('exam_draft');
   };
 
   return {
