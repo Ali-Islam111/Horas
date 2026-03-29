@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from typing import List, Dict, Any, Optional
 
 class QuestionBase(BaseModel):
@@ -9,6 +9,14 @@ class QuestionBase(BaseModel):
 
 class QuestionCreate(QuestionBase):
     correct_choice: str
+
+    @field_validator('correct_choice')
+    @classmethod
+    def validate_correct_choice(cls, v):
+        v = v.strip().upper()
+        if not v.isalpha() or len(v) != 1:
+            raise ValueError("correct_choice must be a single letter (e.g., A, B, C, D)")
+        return v
 
 class QuestionResponse(QuestionBase):
     id: int
