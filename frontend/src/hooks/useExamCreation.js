@@ -55,13 +55,13 @@ export const useExamCreation = () => {
 
     const resolvedIndex = question.correctAnswerIndex ?? (answerIndexFromText >= 0 ? answerIndexFromText : 0);
     const clampedIndex = Math.max(0, Math.min(resolvedIndex, safeOptions.length - 1));
-    const correctChoiceLetter = String.fromCharCode(65 + clampedIndex);
+    const correctChoiceText = safeOptions[clampedIndex];
 
     return {
       question_text: question.question,
       question_type: question.type === 'truefalse' ? 'TF' : 'MCQ',
       choice: safeOptions,
-      correct_choice: correctChoiceLetter,
+      correct_choice: correctChoiceText,
     };
   };
 

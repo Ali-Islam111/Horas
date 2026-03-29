@@ -32,7 +32,7 @@ export const sessionService = {
    * Student: Submit completed exam answers.
    * POST /api/sessions/{session_id}/submit
    * @param {number} sessionId
-   * @param {{ [question_id: string]: string }} answers  e.g. { "1": "A", "2": "C" }
+   * @param {{ [question_id: string]: string }} answers  e.g. { "1": "Stack", "2": "O(n log n)" }
    * Returns { message, score, total_questions }
    */
   async submitExam(sessionId, answers) {

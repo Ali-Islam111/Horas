@@ -95,7 +95,7 @@ export const examService = {
 
   // ─── Backend: Questions ───────────────────────────────────────────────────
   /** Teacher: Add one question to an exam.
-   *  Body: { question_text, choice_a, choice_b, choice_c, choice_d, correct_choice }
+   *  Body: { question_text, question_type, choice: string[], correct_choice }
    */
   async addQuestion(examId, questionData) {
     const response = await fetch(`${API_BASE_URL}/api/questions/${examId}`, {
@@ -129,21 +129,45 @@ export const examService = {
   },
 
   // ─── Helpers ──────────────────────────────────────────────────────────────
+  resolveCorrectChoiceText(options = [], rawAnswer = '') {
+    const safeOptions = (options || []).map((opt) => String(opt || '').trim()).filter(Boolean);
+    const normalizedAnswer = String(rawAnswer || '').trim();
+    if (!safeOptions.length) return '';
+
+    // Backward compatibility: map letter-style answers from parser into option text.
+    const firstChar = normalizedAnswer.charAt(0).toUpperCase();
+    if (/^[A-Z]$/.test(firstChar)) {
+      const idx = firstChar.charCodeAt(0) - 65;
+      if (idx >= 0 && idx < safeOptions.length) {
+        return safeOptions[idx];
+      }
+    }
+
+    const matched = safeOptions.find(
+      (opt) => opt.toLowerCase() === normalizedAnswer.toLowerCase()
+    );
+    return matched || safeOptions[0];
+  },
+
   /** Format questions from the external AI parser into backend-compatible schema
    *  Backend expects: { question_text, question_type, choice: string[], correct_choice }
    */
   formatParsedQuestions(parsedQuestions) {
-    return parsedQuestions.map((q) => ({
-      question_text: q.question,
-      question_type: q.type === 'MCQ' ? 'MCQ' : 'MCQ', // default MCQ
-      choice: [
+    return parsedQuestions.map((q) => {
+      const options = [
         q.options?.[0] || '',
         q.options?.[1] || '',
         q.options?.[2] || '',
         q.options?.[3] || '',
-      ],
-      correct_choice: q.answer || 'A',
-    }));
+      ];
+
+      return {
+        question_text: q.question,
+        question_type: q.type === 'MCQ' ? 'MCQ' : 'MCQ', // default MCQ
+        choice: options,
+        correct_choice: examService.resolveCorrectChoiceText(options, q.answer || ''),
+      };
+    });
   },
 
   /** Validate exam form data before sending to backend */

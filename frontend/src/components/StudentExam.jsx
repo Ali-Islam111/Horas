@@ -446,11 +446,11 @@ function StudentExam({ onNavigate, examController }) {
             <div className="space-y-4 max-w-4xl">
               {currentQ && (currentQ.choice || []).filter(Boolean).map((option, index) => {
                 const choiceLetter = String.fromCharCode(65 + index) // A, B, C, D
-                const isSelected = answers[String(currentQ.id)] === choiceLetter
+                const isSelected = answers[String(currentQ.id)] === option
                 return (
                   <button
                     key={index}
-                    onClick={() => handleAnswer(currentQ.id, choiceLetter)}
+                    onClick={() => handleAnswer(currentQ.id, option)}
                     className={`w-full p-5 rounded-xl flex items-start sm:items-center gap-5 transition-all duration-300 text-left ${
                       isSelected
                         ? 'bg-cyan-500/20 border-cyan-400/50 shadow-[0_0_20px_rgba(6,182,212,0.15)] text-white'

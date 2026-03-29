@@ -16,7 +16,7 @@ export function useExamController(onNavigate) {
   const [currentExam, setCurrentExam] = useState(null);
   const [questions, setQuestions] = useState([]);
   const [session, setSession] = useState(null);
-  const [answers, setAnswers] = useState({}); // { [question_id]: selectedChoice }
+  const [answers, setAnswers] = useState({}); // { [question_id]: selected option text }
   const [submissions, setSubmissions] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
