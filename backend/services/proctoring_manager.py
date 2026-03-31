@@ -20,7 +20,7 @@ ai_engine_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "AI_en
 sys.path.insert(0, ai_engine_path)
 
 # 3. Import the AI Session (Python will now safely grab AI_engine/core.py)
-from proctoring_session import ProctoringSession
+from AI_engine.proctoring_session import ProctoringSession
 
 # 4. Clean up! Remove the AI path and restore the backend's core
 sys.path.pop(0)
