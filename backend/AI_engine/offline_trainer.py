@@ -1,45 +1,19 @@
 # ==============================================================
-# offline_trainer.py  —  Offline Model Trainer
+# offline_trainer.py  —  Offline Model Trainer (V8.0)
 # ==============================================================
 #
-# Reads the JSON sidecars collected by DatasetCollector and uses
-# them to pre-train the IForest and LSTM models between sessions.
+# CHANGES vs V7.5:
+#   - train_lstm() now writes the suggested LSTM_MSE_THR to
+#     saved_models/tuning_hints.json after every successful training run.
+#     config.py reads this file at startup, keeping the threshold in sync
+#     with the actual model without requiring a manual edit.
 #
-# WHY THIS MATTERS — The cold-start problem:
-#   Currently IForest needs ~2 minutes of live data and LSTM needs
-#   ~3 minutes before either model is trained. During that window
-#   the system has no anomaly detection at all — exactly when a
-#   student might try something knowing the AI isn't watching yet.
+#   V7.5 printed the suggested threshold ("Suggested LSTM_MSE_THR: X")
+#   but never persisted it — so every new session started with the
+#   hard-coded default (500.0) even after retraining produced a model
+#   calibrated to a completely different scale.
 #
-#   With offline pre-training:
-#   - IForest starts already trained on historical normal behaviour
-#   - LSTM starts already trained on normal behaviour sequences
-#   - Both models are immediately active from frame 1
-#   - They still continue to update live, now with a head start
-#
-# WHAT IT USES:
-#   The JSON sidecars saved by DatasetCollector contain the full
-#   detector state at each snapshot: head angles, gaze, lip/
-#   glow values. These are exactly the same 7 features that IForest
-#   and LSTM use at runtime. We don't need the images at all for this.
-#
-# WHAT IT DOES NOT DO:
-#   It does not retrain YOLO, MediaPipe, Whisper, or ArcFace.
-#   Those are large pre-trained models — fine-tuning them requires
-#   proper labelled datasets and GPU training pipelines. See the
-#   YOLO fine-tuning section at the bottom of this file for guidance
-#   on when and how to do that separately.
-#
-# HOW TO RUN:
-#   After accumulating sessions in dataset/:
-#       python offline_trainer.py
-#
-#   Or run automatically after every exam session by adding to
-#   your web backend's post-session cleanup job.
-#
-#   Models are saved to saved_models/ and loaded automatically
-#   by IForestDetector and LSTMAutoencoder on next startup.
-#
+# Everything else retained from V7.5.
 # ==============================================================
 
 import os, json, glob, time
@@ -64,7 +38,6 @@ except ImportError:
     print("[Trainer] TensorFlow not found — LSTM training disabled.")
 
 
-# ── Paths ────────────────────────────────────────────────────
 DATASET_DIR  = os.path.join(config.BASE_DIR, "dataset")
 MODELS_DIR   = config.MODELS_DIR
 
@@ -74,13 +47,7 @@ LSTM_PATH    = os.path.join(MODELS_DIR, "lstm_ae_pretrained.keras")
 LSTM_SC_PATH = os.path.join(MODELS_DIR, "lstm_scaler.joblib")
 
 
-# ── Feature extractor ────────────────────────────────────────
 def _extract_vector(detectors: dict) -> np.ndarray | None:
-    """
-    Extract the same 8-feature vector that build_vector() produces
-    at runtime, but from a saved JSON detector state dict.
-    Returns None if any required key is missing.
-    """
     try:
         head  = detectors.get("head",  {})
         gaze  = detectors.get("gaze",  {})
@@ -95,7 +62,6 @@ def _extract_vector(detectors: dict) -> np.ndarray | None:
             lip.get("lar",          0.0),
             glow.get("glow_score",  0.0),
         ], dtype=np.float32)
-        # Skip vectors with NaN/inf (can happen with bad calibration frames)
         if not np.all(np.isfinite(vec)):
             return None
         return vec
@@ -103,15 +69,8 @@ def _extract_vector(detectors: dict) -> np.ndarray | None:
         return None
 
 
-# ── Dataset loader ───────────────────────────────────────────
 def load_dataset(categories: list[str] = None,
                  max_per_category: int  = 5000) -> tuple[np.ndarray, list[str]]:
-    """
-    Load all JSON sidecars from the dataset folder.
-
-    categories : list of folder names to load. None = all folders.
-    Returns (vectors array of shape [N, 8], labels list of length N).
-    """
     if not os.path.exists(DATASET_DIR):
         print(f"[Trainer] Dataset folder not found: {DATASET_DIR}")
         return np.array([]), []
@@ -127,8 +86,7 @@ def load_dataset(categories: list[str] = None,
         jsons = sorted(glob.glob(os.path.join(cat_path, "*.json")))
         if not jsons:
             continue
-        # Limit per category to avoid imbalance
-        jsons = jsons[:max_per_category]
+        jsons  = jsons[:max_per_category]
         loaded = 0
         for jpath in jsons:
             try:
@@ -148,18 +106,7 @@ def load_dataset(categories: list[str] = None,
     return np.array(all_vecs), all_labels
 
 
-# ── IForest trainer ──────────────────────────────────────────
 def train_iforest(min_samples: int = 200) -> bool:
-    """
-    Train IsolationForest on NORMAL frames only.
-
-    We only use 'normal' category because IForest learns what normal
-    looks like and flags deviations — feeding it alert frames would
-    teach it that cheating is normal.
-
-    Saves: iforest_pretrained.joblib + iforest_scaler.joblib
-    These are automatically loaded by IForestDetector on startup.
-    """
     if not _SK:
         return False
 
@@ -168,7 +115,6 @@ def train_iforest(min_samples: int = 200) -> bool:
 
     if len(vecs) < min_samples:
         print(f"[Trainer] Not enough normal samples: {len(vecs)} < {min_samples} required.")
-        print(f"          Run more sessions to collect data first.")
         return False
 
     print(f"[Trainer] Training on {len(vecs)} normal vectors …")
@@ -178,7 +124,7 @@ def train_iforest(min_samples: int = 200) -> bool:
     X      = scaler.transform(vecs)
     model  = IsolationForest(
         contamination = config.IFOREST_CONTAMINATION,
-        n_estimators  = 200,       # more trees than live (150) — we have more time offline
+        n_estimators  = 200,
         random_state  = 42,
         n_jobs        = -1,
     ).fit(X)
@@ -194,27 +140,12 @@ def train_iforest(min_samples: int = 200) -> bool:
     return True
 
 
-# ── LSTM trainer ─────────────────────────────────────────────
 def train_lstm(min_sequences: int = 100) -> bool:
-    """
-    Train LSTM Autoencoder on NORMAL frames only.
-
-    Builds sequences of LSTM_SEQ_LEN consecutive frames from the
-    normal category. The autoencoder learns to reconstruct normal
-    behaviour — high reconstruction error at runtime = anomaly.
-
-    Note: consecutive frames from the same session are grouped
-    together to form realistic sequences, rather than mixing random
-    frames from different sessions.
-
-    Saves: lstm_ae_pretrained.keras + lstm_scaler.joblib
-    """
     if not _TF or not _SK:
         return False
 
     print("\n[Trainer] === LSTM Autoencoder Training ===")
 
-    # Load normal vectors grouped by session for realistic sequences
     cat_path = os.path.join(DATASET_DIR, "normal")
     if not os.path.exists(cat_path):
         print("[Trainer] No normal/ folder found.")
@@ -225,7 +156,6 @@ def train_lstm(min_sequences: int = 100) -> bool:
         print("[Trainer] No JSON files in normal/")
         return False
 
-    # Group by session_id to keep sequences temporally coherent
     by_session: dict[str, list[np.ndarray]] = {}
     for jpath in jsons:
         try:
@@ -239,7 +169,6 @@ def train_lstm(min_sequences: int = 100) -> bool:
         except Exception:
             continue
 
-    # Build sequences of LSTM_SEQ_LEN from each session
     sequences = []
     for sid, vecs in by_session.items():
         arr = np.array(vecs)
@@ -250,13 +179,10 @@ def train_lstm(min_sequences: int = 100) -> bool:
 
     if len(sequences) < min_sequences:
         print(f"[Trainer] Not enough sequences: {len(sequences)} < {min_sequences} required.")
-        print(f"          Sequences need {config.LSTM_SEQ_LEN} frames each.")
-        print(f"          Run more sessions to collect data.")
         return False
 
     seqs = np.array(sequences)
-    print(f"[Trainer] Training on {len(seqs)} sequences from "
-          f"{len(by_session)} sessions …")
+    print(f"[Trainer] Training on {len(seqs)} sequences from {len(by_session)} sessions …")
     t0 = time.time()
 
     from sklearn.preprocessing import StandardScaler as SS
@@ -265,7 +191,6 @@ def train_lstm(min_sequences: int = 100) -> bool:
         seqs.reshape(-1, config.N_FEATURES)
     ).reshape(len(seqs), config.LSTM_SEQ_LEN, config.N_FEATURES)
 
-    # Larger model than the live version — we have more time offline
     inp = tf.keras.Input(shape=(config.LSTM_SEQ_LEN, config.N_FEATURES))
     x   = tf.keras.layers.LSTM(128, return_sequences=True)(inp)
     x   = tf.keras.layers.LSTM(64,  return_sequences=False)(x)
@@ -279,15 +204,13 @@ def train_lstm(min_sequences: int = 100) -> bool:
 
     model.fit(
         X, X,
-        epochs          = 60,      # more epochs than live (30) — no time pressure
-        batch_size      = 64,
-        validation_split= 0.15,
-        verbose         = 1,
-        callbacks       = [
-            tf.keras.callbacks.EarlyStopping(
-                patience=8, restore_best_weights=True),
-            tf.keras.callbacks.ReduceLROnPlateau(
-                patience=4, factor=0.5, verbose=1),
+        epochs           = 60,
+        batch_size       = 64,
+        validation_split = 0.15,
+        verbose          = 1,
+        callbacks        = [
+            tf.keras.callbacks.EarlyStopping(patience=8, restore_best_weights=True),
+            tf.keras.callbacks.ReduceLROnPlateau(patience=4, factor=0.5, verbose=1),
         ],
     )
 
@@ -296,18 +219,42 @@ def train_lstm(min_sequences: int = 100) -> bool:
 
     elapsed = time.time() - t0
     recon   = model.predict(X, verbose=0)
-    mse     = float(np.mean((X - recon) ** 2))
+
+    # Anti-lag: compute MSE on last frame only (mirrors runtime behaviour)
+    last_true  = X[:, -1, :]
+    last_recon = recon[:, -1, :]
+    mse        = float(np.mean((last_true - last_recon) ** 2))
+    suggested  = mse * 3.0
+
     print(f"[Trainer] LSTM trained in {elapsed:.1f}s")
-    print(f"          Reconstruction MSE on training data: {mse:.5f}")
-    print(f"          Suggested LSTM_MSE_THR: {mse * 3:.5f}  "
-          f"(3× training MSE — adjust in config.py)")
+    print(f"          Last-frame MSE on training data: {mse:.5f}")
+    print(f"          Suggested LSTM_MSE_THR: {suggested:.5f}  (3× training MSE)")
     print(f"          Saved → {LSTM_PATH}")
+
+    # FIX (V8.0): Persist the suggested threshold so config.py can load it
+    # at startup. V7.5 only printed this value — the hard-coded default
+    # was never updated, causing threshold drift after every retraining run.
+    try:
+        hints = {}
+        if os.path.exists(config.TUNING_HINTS_FILE):
+            with open(config.TUNING_HINTS_FILE) as f:
+                hints = json.load(f)
+        hints["lstm_mse_thr"]          = suggested
+        hints["lstm_mse_thr_updated"]  = time.strftime("%Y-%m-%d %H:%M:%S")
+        hints["lstm_training_mse"]     = mse
+        hints["lstm_sequences_trained"] = len(seqs)
+        os.makedirs(os.path.dirname(config.TUNING_HINTS_FILE), exist_ok=True)
+        with open(config.TUNING_HINTS_FILE, "w") as f:
+            json.dump(hints, f, indent=2)
+        print(f"          Tuning hints saved → {config.TUNING_HINTS_FILE}")
+        print(f"          (config.py will load LSTM_MSE_THR={suggested:.2f} on next startup)")
+    except Exception as e:
+        print(f"          Warning: Could not write tuning hints: {e}")
+
     return True
 
 
-# ── Dataset statistics ───────────────────────────────────────
 def dataset_stats():
-    """Print a summary of what's in the dataset folder."""
     if not os.path.exists(DATASET_DIR):
         print(f"[Trainer] No dataset folder at {DATASET_DIR}")
         return
@@ -326,14 +273,13 @@ def dataset_stats():
     print(f"  {'TOTAL':<28}  {total:>5} images")
 
 
-# ── Main ─────────────────────────────────────────────────────
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(
         description="Offline trainer — pre-trains IForest and LSTM from collected dataset")
-    parser.add_argument("--stats",  action="store_true", help="Show dataset stats only")
-    parser.add_argument("--iforest",action="store_true", help="Train IForest only")
-    parser.add_argument("--lstm",   action="store_true", help="Train LSTM only")
+    parser.add_argument("--stats",   action="store_true", help="Show dataset stats only")
+    parser.add_argument("--iforest", action="store_true", help="Train IForest only")
+    parser.add_argument("--lstm",    action="store_true", help="Train LSTM only")
     args = parser.parse_args()
 
     if args.stats:
@@ -343,9 +289,8 @@ if __name__ == "__main__":
     elif args.lstm:
         train_lstm()
     else:
-        # Default: train both
         dataset_stats()
-        ok_if = train_iforest()
+        ok_if   = train_iforest()
         ok_lstm = train_lstm()
         print(f"\n[Trainer] Done.  IForest: {'✓' if ok_if else '✗'}  "
               f"LSTM: {'✓' if ok_lstm else '✗'}")

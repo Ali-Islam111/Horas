@@ -3,7 +3,7 @@ from typing import Dict, Literal, Optional, Any
 from datetime import datetime
 
 class StudentAnswerSubmit(BaseModel):
-    answers: Dict[str, str] # e.g. {"1": "A", "2": "C"} mapping question_id (as str) to selected choice
+    answers: Dict[str, str] # e.g. {"1": "Stack", "2": "O(n log n)"} mapping question_id (as str) to selected choice text
 
 class SessionBase(BaseModel):
     exam_id: int

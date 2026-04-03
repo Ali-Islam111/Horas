@@ -1,34 +1,28 @@
 # ==============================================================
-# detectors/anomaly.py  —  Isolation Forest + LSTM Autoencoder
+# detectors/anomaly.py  —  Isolation Forest + LSTM Autoencoder (V9.0)
 # ==============================================================
 #
-# Fixes vs GitHub version:
-#   - IForest: added _training flag to prevent multiple concurrent
-#     training threads from spawning between trigger and completion
-#   - LSTM: same _training flag fix — critical, LSTM trains for
-#     ~30 epochs so without this flag 30+ threads can stack up
+# FIX (V9.0) — Lazy TensorFlow import:
+#   Previously: import tensorflow as tf  at module level → 3-8 second
+#               import penalty every time proctoring_session was imported.
+#   Now: tensorflow is imported inside _train() / _try_load_pretrained()
+#        only when actually needed. The module import is instant.
+#
+# FIX (V9.0) — Lazy sklearn import:
+#   Same pattern. sklearn imported inside methods, not at module level.
+#
+# Retained from V8.0:
+#   - _training guard flags (prevents concurrent training threads)
+#   - Pre-trained model loading (active from frame 1 if available)
+#   - LSTM anti-lag fix (last-frame-only MSE)
+#   - Inference batching (LSTM_INFER_BATCH_SIZE)
+#   - Rate-gating via ANOMALY_EVERY in the main loop
 # ==============================================================
 
 import os, time, threading, numpy as np
 import config
 
-try:
-    from sklearn.ensemble       import IsolationForest
-    from sklearn.preprocessing  import StandardScaler
-    _SK = True
-except ImportError:
-    _SK = False
-    print("[Anomaly] scikit-learn not found — IForest disabled.")
 
-try:
-    import tensorflow as tf
-    _TF = True
-except ImportError:
-    _TF = False
-    print("[Anomaly] TensorFlow not found — LSTM Autoencoder disabled.")
-
-
-# ── Feature builder ──────────────────────────────────────────
 def build_vector(head: dict, gaze: dict, lip: dict,
                  glow: dict) -> np.ndarray:
     """Assemble one N_FEATURES-dim vector from detector outputs."""
@@ -43,20 +37,28 @@ def build_vector(head: dict, gaze: dict, lip: dict,
     ], dtype=np.float32)
 
 
-# ── Isolation Forest ─────────────────────────────────────────
-class IForestDetector:
-    """
-    Phase 1 (warm-up): collects IFOREST_WARMUP feature vectors (~2 min).
-    Phase 2 (trained): scores every new vector in real-time.
-                       Retrains in background every IFOREST_RETRAIN_EVERY ticks.
+def _try_import_sklearn():
+    """Lazy import — returns (IsolationForest, StandardScaler) or (None, None)."""
+    try:
+        from sklearn.ensemble import IsolationForest
+        from sklearn.preprocessing import StandardScaler
+        return IsolationForest, StandardScaler
+    except ImportError:
+        print("[Anomaly] scikit-learn not found — IForest disabled.")
+        return None, None
 
-    IMPROVEMENT: Pre-trained model loading.
-    If offline_trainer.py has been run after previous sessions, a pre-trained
-    model exists in saved_models/. Loading it means the detector is fully
-    active from frame 1 — no cold-start window where anomalies go undetected.
-    The live data still accumulates and the model still retrains periodically,
-    so it adapts to the current student on top of the historical baseline.
-    """
+
+def _try_import_tf():
+    """Lazy import — returns tf module or None."""
+    try:
+        import tensorflow as tf
+        return tf
+    except ImportError:
+        print("[Anomaly] TensorFlow not found — LSTM Autoencoder disabled.")
+        return None
+
+
+class IForestDetector:
     def __init__(self):
         self._buf:     list[np.ndarray] = []
         self._model    = None
@@ -65,13 +67,11 @@ class IForestDetector:
         self._training = False
         self._ticks    = 0
         self._lock     = threading.Lock()
-
-        # Try to load a pre-trained model from offline_trainer.py
         self._try_load_pretrained()
 
     def _try_load_pretrained(self):
-        """Load pre-trained IForest from disk if available."""
-        if not _SK:
+        IForest, StandardScaler = _try_import_sklearn()
+        if IForest is None:
             return
         iforest_path = os.path.join(config.MODELS_DIR, "iforest_pretrained.joblib")
         scaler_path  = os.path.join(config.MODELS_DIR, "iforest_scaler.joblib")
@@ -91,14 +91,13 @@ class IForestDetector:
         with self._lock:
             self._buf.append(vec.copy())
 
-        # Trigger initial training — only if not already training or trained
+        IForest, _ = _try_import_sklearn()
         if (not self._trained and not self._training and
-                len(self._buf) >= config.IFOREST_WARMUP and _SK):
-            self._training = True       # ← set BEFORE spawning thread
+                IForest and len(self._buf) >= config.IFOREST_WARMUP):
+            self._training = True
             threading.Thread(target=self._train, daemon=True).start()
 
-        # Periodic retrain — only one thread at a time
-        if (self._trained and not self._training and _SK and
+        if (self._trained and not self._training and IForest and
                 self._ticks % config.IFOREST_RETRAIN_EVERY == 0):
             self._training = True
             threading.Thread(target=self._train, daemon=True).start()
@@ -115,11 +114,14 @@ class IForestDetector:
 
     def _train(self):
         try:
+            IForest, StandardScaler = _try_import_sklearn()
+            if IForest is None:
+                return
             with self._lock:
                 data = np.array(self._buf.copy())
             scaler = StandardScaler().fit(data)
             X      = scaler.transform(data)
-            model  = IsolationForest(
+            model  = IForest(
                 contamination = config.IFOREST_CONTAMINATION,
                 n_estimators  = 150,
                 random_state  = 42,
@@ -129,23 +131,10 @@ class IForestDetector:
                 self._model, self._scaler, self._trained = model, scaler, True
             print(f"  [IForest] Trained on {len(data)} samples.")
         finally:
-            self._training = False      # ← always release guard, even on error
+            self._training = False
 
 
-# ── LSTM Autoencoder ─────────────────────────────────────────
 class LSTMAutoencoder:
-    """
-    Learns temporal patterns of NORMAL behaviour during warm-up.
-    After training, sequences with high reconstruction error are anomalous.
-
-    IMPROVEMENT: Pre-trained model loading.
-    If offline_trainer.py has been run, a better pre-trained model exists
-    (60 epochs, 128-unit LSTM vs the live 30-epoch 64-unit version).
-    Loading it eliminates the ~3-minute cold-start window entirely.
-
-    FIX: _training flag prevents stacked concurrent training threads.
-    IMPROVEMENT: Inference batching (LSTM_INFER_BATCH_SIZE).
-    """
     def __init__(self):
         self._seq_buf:   list[np.ndarray] = []
         self._seqs:      list[np.ndarray] = []
@@ -157,16 +146,15 @@ class LSTMAutoencoder:
         self._infer_buf: list[np.ndarray] = []
         self._last_mse:  float | None     = None
         self._last_anom: bool             = False
-
-        # Try to load a pre-trained model from offline_trainer.py
         self._try_load_pretrained()
 
     def _try_load_pretrained(self):
-        """Load pre-trained LSTM from disk if available."""
-        if not _TF or not _SK:
+        tf = _try_import_tf()
+        _, StandardScaler = _try_import_sklearn()
+        if tf is None or StandardScaler is None:
             return
-        lstm_path  = os.path.join(config.MODELS_DIR, "lstm_ae_pretrained.keras")
-        scaler_path= os.path.join(config.MODELS_DIR, "lstm_scaler.joblib")
+        lstm_path   = os.path.join(config.MODELS_DIR, "lstm_ae_pretrained.keras")
+        scaler_path = os.path.join(config.MODELS_DIR, "lstm_scaler.joblib")
         if os.path.exists(lstm_path) and os.path.exists(scaler_path):
             try:
                 import joblib
@@ -186,8 +174,9 @@ class LSTMAutoencoder:
             with self._lock:
                 self._seqs.append(seq)
 
-        # Trigger training — only once, only if not already running
-        if (not self._trained and not self._training and _TF and _SK and
+        tf = _try_import_tf()
+        _, StandardScaler = _try_import_sklearn()
+        if (not self._trained and not self._training and tf and StandardScaler and
                 len(self._seqs) >= config.LSTM_WARMUP_SEQS):
             self._training = True
             threading.Thread(target=self._train, daemon=True).start()
@@ -195,17 +184,14 @@ class LSTMAutoencoder:
         if not self._trained or len(self._seq_buf) < config.LSTM_SEQ_LEN:
             return {"trained": False, "mse": None, "anomaly": False}
 
-        # IMPROVEMENT: Batch inference — accumulate sequences, predict every N frames
         seq = np.array(self._seq_buf[-config.LSTM_SEQ_LEN:])
         self._infer_buf.append(seq)
 
         if len(self._infer_buf) < config.LSTM_INFER_BATCH_SIZE:
-            # Return cached result from last batch — still fresh enough
             return {"trained": True,
                     "mse":     self._last_mse,
                     "anomaly": self._last_anom}
 
-        # Run batch predict — amortizes TF overhead across LSTM_INFER_BATCH_SIZE frames
         batch = np.array(self._infer_buf)
         self._infer_buf.clear()
 
@@ -219,12 +205,6 @@ class LSTMAutoencoder:
                 batch.reshape(-1, config.N_FEATURES)
             ).reshape(len(batch), config.LSTM_SEQ_LEN, config.N_FEATURES)
             recon = model.predict(scaled, verbose=0)
-            
-            # ── ANTI-LAG FIX ──────────────────────────────────────────
-            # Previously, the MSE was calculated across the entire 30-frame sequence.
-            # This meant a brief 1-second anomaly would remain in the sliding window
-            # for 30 frames, causing the alert to "stick" and lag.
-            # Now, we only calculate reconstruction error on the LAST frame of the sequence.
             last_step_true  = scaled[:, -1, :]
             last_step_recon = recon[:, -1, :]
             mse = float(np.mean((last_step_true - last_step_recon) ** 2))
@@ -237,10 +217,13 @@ class LSTMAutoencoder:
 
     def _train(self):
         try:
+            tf = _try_import_tf()
+            _, StandardScaler = _try_import_sklearn()
+            if tf is None or StandardScaler is None:
+                return
             with self._lock:
                 seqs = np.array(self._seqs.copy())
-            from sklearn.preprocessing import StandardScaler as SS
-            scaler = SS().fit(seqs.reshape(-1, config.N_FEATURES))
+            scaler = StandardScaler().fit(seqs.reshape(-1, config.N_FEATURES))
             X = scaler.transform(
                 seqs.reshape(-1, config.N_FEATURES)
             ).reshape(len(seqs), config.LSTM_SEQ_LEN, config.N_FEATURES)
@@ -268,4 +251,4 @@ class LSTMAutoencoder:
         except Exception as e:
             print(f"  [LSTM] Training error: {e}")
         finally:
-            self._training = False      # ← always release guard
+            self._training = False

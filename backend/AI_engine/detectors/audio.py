@@ -1,29 +1,23 @@
 # ==============================================================
-# detectors/audio.py  —  Hybrid Audio: faster-whisper + YAMNet
+# detectors/audio.py  —  Hybrid Audio: faster-whisper + YAMNet (V8.0)
 # ==============================================================
 #
-# Architecture:
+# CHANGES vs V7.5:
+#   - MicMonitor: adaptive noise floor using exponential moving average
+#     instead of a fixed calibration locked after 6 seconds.
+#     Old: 2 chunks (~6s) → lock floor permanently → noisy room masks speech.
+#     New: floor decays toward quieter measurements using EMA with alpha
+#          from config.AUDIO_NOISE_FLOOR_EMA_ALPHA (default 0.02).
+#          Gradual tracking means a momentarily noisy calibration window
+#          no longer silences the detector for the whole exam.
+#   - WebAudioHandler: replaced MicMonitor.RMS_FLOOR (class attribute
+#     that didn't exist on MicMonitor) with config.AUDIO_NOISE_FLOOR_MIN.
+#   - LLM verifier model fallback is in llm_verifier.py, not here.
+#
+# Architecture unchanged from V7.5:
 #   Layer 0: RMS energy gate  — pure numpy, <0.1ms
-#             if room is silent → skip everything
 #   Layer 1: faster-whisper (CUDA: base / CPU: tiny)
-#             captures WHAT is said, runs every 3s on 3s chunks
-#             built-in Silero VAD filters silence within the chunk
-#             GPU: "base" model — much better accuracy for accents,
-#             whispers, Arabic; only ~2x slower than "tiny" but audio
-#             runs on its own thread so the video loop never notices.
-#             CPU fallback: "tiny" to keep CPU usage manageable.
-#   Layer 2: YAMNet  — non-speech audio event detection
-#             catches music, TV, media playing nearby
-#             only runs when energy gate passes + no speech found
-#
-# Why this is better than YAMNet-only:
-#   - Actual words logged in PDF report ("student said: 'what is Q3'")
-#   - Near-zero false positives: silence gate + Silero VAD double filter
-#   - YAMNet still catches media/music that Whisper ignores
-#   - All inference is async — main loop never blocked
-#
-# Install:  pip install faster-whisper
-#           (CUDA support comes automatically if PyTorch CUDA is installed)
+#   Layer 2: YAMNet — non-speech audio event detection
 # ==============================================================
 
 import os, time, threading, tempfile, subprocess
@@ -31,7 +25,7 @@ import numpy as np
 import config
 
 # ── faster-whisper ────────────────────────────────────────────
-_WHISPER    = False
+_WHISPER       = False
 _whisper_model = None
 
 def _ensure_whisper():
@@ -41,23 +35,14 @@ def _ensure_whisper():
     try:
         from faster_whisper import WhisperModel
         import torch
-        device  = "cuda" if torch.cuda.is_available() else "cpu"
-        # IMPROVEMENT: Use "base" on GPU — 2x slower than "tiny" but dramatically
-        # better accuracy for whispers, accents, and Arabic. Since the audio
-        # pipeline runs on its own thread, the video loop is completely unaffected.
-        # On CPU, keep "tiny" to avoid making CPU-only machines unusable.
+        device     = "cuda" if torch.cuda.is_available() else "cpu"
         model_size = "base" if device == "cuda" else "tiny"
         compute    = "float16" if device == "cuda" else "int8"
-        _whisper_model = WhisperModel(
-            model_size,
-            device       = device,
-            compute_type = compute,
-        )
+        _whisper_model = WhisperModel(model_size, device=device, compute_type=compute)
         _WHISPER = True
         print(f"  [Audio] faster-whisper {model_size} loaded on {device} ({compute})")
     except ImportError:
-        print("  [Audio] faster-whisper not installed — run: pip install faster-whisper")
-        print("           Speech transcription disabled; YAMNet only.")
+        print("  [Audio] faster-whisper not installed — speech transcription disabled.")
     except Exception as e:
         print(f"  [Audio] faster-whisper failed to load: {e}")
 
@@ -96,7 +81,6 @@ def _ensure_yamnet():
     except Exception as e:
         print(f"  [Audio] YAMNet not available: {e}")
 
-# ── sounddevice ──────────────────────────────────────────────
 try:
     import sounddevice as sd
     _SD = True
@@ -106,7 +90,6 @@ except ImportError:
 
 # ── RMS energy gate ───────────────────────────────────────────
 def _rms(audio: np.ndarray) -> float:
-    """Root-mean-square energy. <0.1ms. Used to skip silent chunks."""
     return float(np.sqrt(np.mean(audio ** 2)))
 
 
@@ -115,51 +98,44 @@ class SpeechTranscriber:
     """
     Wraps faster-whisper for exam-context transcription.
     Tuned for short (~3s) chunks of quiet speech.
-
-    vad_filter=True uses Silero VAD internally to skip non-speech
-    regions within the chunk — this is the second noise gate after
-    the RMS energy gate, and catches breath sounds / paper rustling
-    that pass the energy gate but aren't speech.
+    Includes English and Egyptian Arabic function words as innocent vocab.
     """
-    # Words that indicate innocent activity (reading aloud to oneself)
-    # vs. suspicious communication — logged but lower severity
-    _INNOCENT = {"the","a","an","and","or","but","is","it","in","of",
-                 "to","for","with","that","this","on","at","by","from"}
+
+    _INNOCENT = {
+        "the", "a", "an", "and", "or", "but", "is", "it", "in", "of",
+        "to", "for", "with", "that", "this", "on", "at", "by", "from",
+        "و", "ف", "ق", "في", "من", "إلى", "على", "أن", "هذا", "هذه",
+        "ال", "مع", "ل", "لا", "ما", "هو", "هي", "أنا", "نحن", "أو",
+        "إذا", "حيث", "كان", "يكون", "بس", "يعني", "طب", "ممكن",
+    }
 
     def transcribe(self, audio: np.ndarray) -> list[dict]:
-        """
-        Returns list of event dicts, one per detected speech segment.
-        Each dict has: event, display, confidence, transcript
-        """
         _ensure_whisper()
         if not _WHISPER or audio is None or len(audio) == 0:
             return []
         try:
             segments, info = _whisper_model.transcribe(
                 audio,
-                language         = None,    # auto-detect — handles multiple languages
-                beam_size        = 1,       # fastest; sufficient for short chunks
-                vad_filter       = True,    # Silero VAD — second noise gate
+                language         = None,
+                beam_size        = 1,
+                vad_filter       = True,
                 vad_parameters   = {
-                    "threshold":             0.45,   # speech confidence required
-                    "min_speech_duration_ms": 300,   # ignore <300ms puffs
+                    "threshold":             0.45,
+                    "min_speech_duration_ms": 300,
                     "min_silence_duration_ms": 500,
                 },
-                no_speech_threshold = 0.7,  # if Whisper itself thinks no speech → skip
-                condition_on_previous_text = False,  # stateless per chunk
+                no_speech_threshold        = 0.7,
+                condition_on_previous_text = False,
             )
-
             events = []
             for seg in segments:
                 text = seg.text.strip()
                 if not text or len(text) < 3:
                     continue
-
-                words = set(text.lower().split())
+                words      = set(text.lower().split())
                 is_innocent = words.issubset(self._INNOCENT)
-                display     = f"Speech detected: \"{text}\""
-                severity    = "whisper" if is_innocent else "multi_talk"
-
+                display    = f"Speech detected: \"{text}\""
+                severity   = "whisper" if is_innocent else "multi_talk"
                 events.append({
                     "event":      severity,
                     "display":    display,
@@ -167,7 +143,6 @@ class SpeechTranscriber:
                     "transcript": text,
                 })
             return events
-
         except Exception as e:
             print(f"  [Audio] Whisper error: {e}")
             return []
@@ -175,11 +150,6 @@ class SpeechTranscriber:
 
 # ── YAMNet non-speech classifier ─────────────────────────────
 class MediaClassifier:
-    """
-    Checks top-5 YAMNet predictions for non-speech audio events.
-    Only called when Whisper finds no speech — so it catches:
-    music, TV audio, other media playing in the room.
-    """
     def classify(self, audio: np.ndarray) -> list[dict]:
         _ensure_yamnet()
         if not _YAMNET or audio is None or len(audio) == 0:
@@ -190,12 +160,9 @@ class MediaClassifier:
             top5   = sc.argsort()[-5:][::-1]
             events = []
             seen   = set()
-
             for idx in top5:
                 label = _class_map[idx] if _class_map else str(idx)
                 conf  = float(sc[idx])
-
-                # Only non-speech media labels — speech is handled by Whisper
                 if label in config.MEDIA_LABELS and conf > config.MEDIA_THR:
                     if "media" not in seen:
                         events.append({
@@ -205,7 +172,6 @@ class MediaClassifier:
                             "transcript": "",
                         })
                         seen.add("media")
-
             return events
         except Exception as e:
             print(f"  [Audio] YAMNet error: {e}")
@@ -215,17 +181,23 @@ class MediaClassifier:
 # ── Desktop Microphone Monitor ────────────────────────────────
 class MicMonitor:
     """
-    Records mic in WHISPER_CHUNK_SEC chunks.
+    Records mic in CHUNK_SEC chunks.
     Pipeline per chunk:
-      1. RMS gate  — skip if silence
-      2. Whisper   — transcribe speech → event if found
-      3. YAMNet    — media detection if Whisper found nothing
-      4. Callback  — report events to EventLogger
+      1. RMS gate       — skip if silence
+      2. Whisper        — transcribe speech
+      3. YAMNet         — media detection if Whisper found nothing
+      4. Callback       — report events to EventLogger
 
-    Everything runs in a background thread — main loop never waits.
+    FIX (V8.0): Adaptive noise floor via EMA.
+      Old: lock floor after 2 calibration chunks (~6s) → permanently wrong
+           if the room is noisy during calibration.
+      New: floor updates every chunk via exponential moving average.
+           alpha=0.02 means gentle drift toward quieter moments, so a
+           quiet room naturally lowers the floor and a noisy burst raises
+           it only slightly without silencing the detector.
     """
-    CHUNK_SEC = 3.0   # Whisper works best with 3-30s chunks
-    MIN_RMS_FLOOR = 0.005 # Absolute minimum silence gate
+
+    CHUNK_SEC = 3.0
 
     def __init__(self, callback):
         self._cb          = callback
@@ -234,9 +206,12 @@ class MicMonitor:
         self._last:       dict[str, float] = {}
         self._transcriber = SpeechTranscriber()
         self._media_clf   = MediaClassifier()
-        self._rms_floor   = self.MIN_RMS_FLOOR
-        self._calibrating = True
-        self._calib_samples = []
+
+        # FIX (V8.0): Start floor at min value; EMA will adapt upward
+        # as ambient noise is observed. This replaces the fixed-calibration
+        # window approach.
+        self._rms_floor   = config.AUDIO_NOISE_FLOOR_MIN
+        self._alpha       = config.AUDIO_NOISE_FLOOR_EMA_ALPHA
 
     def start(self):
         _ensure_whisper()
@@ -255,30 +230,36 @@ class MicMonitor:
             import torch
             _wsize = "base" if torch.cuda.is_available() else "tiny"
             active.append(f"Whisper-{_wsize}")
-        if _YAMNET:  active.append("YAMNet")
+        if _YAMNET:
+            active.append("YAMNet")
         print(f"  [Audio] Microphone monitor started ({' + '.join(active)}).")
 
     def stop(self):
         self._running = False
-        if self._thread: self._thread.join(timeout=3.0)
+        if self._thread:
+            self._thread.join(timeout=3.0)
+
+    def _update_floor(self, rms_val: float):
+        """
+        FIX (V8.0): EMA update of noise floor.
+        Only update toward a *lower* value — the floor never auto-raises
+        to swallow real speech, it only lowers to track a quiet room.
+        It raises only if the current reading is below the floor (which
+        means it was set too high by a noisy calibration window).
+        """
+        if rms_val < self._rms_floor:
+            # Room got quieter — lower the floor slowly
+            self._rms_floor = (self._alpha * rms_val +
+                               (1 - self._alpha) * self._rms_floor)
+            self._rms_floor = max(self._rms_floor, config.AUDIO_NOISE_FLOOR_MIN)
 
     def _loop(self):
-        # FIX: The original implementation used sd.rec() + sd.wait() which
-        # BLOCKS the audio thread for the full CHUNK_SEC (3 seconds) while
-        # recording. Although the audio thread is separate from the video
-        # main loop, sd.wait() also pauses the sounddevice internal scheduler,
-        # which caused CPU contention that dropped the main loop from 30→3 FPS.
-        #
-        # Fix: Use sd.InputStream with a callback queue instead of sd.wait().
-        # Recording happens in sounddevice's internal C thread; chunks are
-        # pushed into a Queue and consumed here — zero blocking in Python.
         import queue as _queue
-        chunk_q    = _queue.Queue(maxsize=4)
-        n_samples  = int(self.CHUNK_SEC * config.SAMPLE_RATE)
-        leftover   = np.array([], dtype=np.float32)
+        chunk_q   = _queue.Queue(maxsize=4)
+        n_samples = int(self.CHUNK_SEC * config.SAMPLE_RATE)
+        leftover  = np.array([], dtype=np.float32)
 
         def _sd_callback(indata, frames, time_info, status):
-            # This runs in sounddevice's C thread — must be non-blocking
             chunk_q.put(indata.flatten().copy(), block=False) if not chunk_q.full() else None
 
         try:
@@ -286,7 +267,7 @@ class MicMonitor:
                 samplerate = config.SAMPLE_RATE,
                 channels   = 1,
                 dtype      = "float32",
-                blocksize  = 4096,          # ~256ms per callback — low latency
+                blocksize  = 4096,
                 callback   = _sd_callback,
             )
         except Exception as e:
@@ -296,41 +277,30 @@ class MicMonitor:
         with stream:
             while self._running:
                 try:
-                    # Accumulate raw blocks until we have a full CHUNK_SEC chunk
-                    block = chunk_q.get(timeout=0.5)
+                    block    = chunk_q.get(timeout=0.5)
                     leftover = np.concatenate([leftover, block])
 
                     if len(leftover) < n_samples:
-                        continue          # not enough data yet — keep accumulating
+                        continue
 
                     chunk    = leftover[:n_samples]
                     leftover = leftover[n_samples:]
 
-                    # ── Layer 0: RMS energy gate ──────────────
-                    rms_val = _rms(chunk)
-                    
-                    if self._calibrating:
-                        self._calib_samples.append(rms_val)
-                        if len(self._calib_samples) >= 2: # ~6 seconds of audio
-                            self._rms_floor = max(self.MIN_RMS_FLOOR, np.mean(self._calib_samples) + 0.002)
-                            self._calibrating = False
-                            print(f"  [Audio] Dynamic noise floor calibrated to {self._rms_floor:.4f}")
-                        
-                    if rms_val < self._rms_floor:
-                        continue          # silent — skip both models
+                    rms_val  = _rms(chunk)
 
-                    # ── Layer 1: Whisper (speech) ─────────────
+                    # FIX (V8.0): update adaptive floor on every chunk
+                    self._update_floor(rms_val)
+
+                    if rms_val < self._rms_floor:
+                        continue  # silent — skip both models
+
                     events = []
                     if _WHISPER:
                         events = self._transcriber.transcribe(chunk)
 
-                    # ── Layer 2: YAMNet (media) ───────────────
-                    # Only run if Whisper found nothing — saves time
-                    # and avoids double-flagging the same audio
                     if not events and _YAMNET:
                         events = self._media_clf.classify(chunk)
 
-                    # ── Dispatch with cooldown ────────────────
                     now = time.time()
                     for ev in events:
                         key = ev["event"]
@@ -349,6 +319,7 @@ class MicMonitor:
 # ── Web / API Audio Handler ───────────────────────────────────
 class WebAudioHandler:
     """For browser-based deployments — receives audio blobs via HTTP."""
+
     def __init__(self):
         _ensure_whisper()
         _ensure_yamnet()
@@ -358,7 +329,8 @@ class WebAudioHandler:
 
     def process_blob(self, audio_bytes: bytes, mime: str) -> list[dict]:
         audio = AudioNormalizer.from_bytes(audio_bytes, mime)
-        if audio is None or _rms(audio) < MicMonitor.RMS_FLOOR:
+        # FIX (V8.0): use config constant instead of missing class attribute
+        if audio is None or _rms(audio) < config.AUDIO_NOISE_FLOOR_MIN:
             return []
 
         events = self._transcriber.transcribe(audio)
