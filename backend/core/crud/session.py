@@ -27,6 +27,9 @@ def get_active_session(db: Session, user_id: int, exam_id: int):
 def get_student_submissions(db: Session, user_id: int):
     return db.query(ExamSession).filter(ExamSession.user_id == user_id).all()
 
+def get_all_submissions(db: Session):
+    return db.query(ExamSession).order_by(ExamSession.started_at.desc()).all()
+
 def get_session_by_user_and_exam(db: Session, user_id: int, exam_id: int):
     return db.query(ExamSession).filter(
         ExamSession.user_id == user_id,
