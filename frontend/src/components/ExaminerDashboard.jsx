@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import logo from '../../assets/Untitled (1).png';
 import { useLanguage } from '../contexts/LanguageContext';
-import { API_BASE_URL, API_ENDPOINTS } from '../config/api';
+import { API_BASE_URL } from '../config/api';
+import { fetchSessionEvents } from '../services/proctoringService';
 
 function ExaminerDashboard({ onNavigate }) {
   const { t, language, toggleLanguage } = useLanguage();
@@ -10,20 +11,21 @@ function ExaminerDashboard({ onNavigate }) {
     totalStudents: 0,
     alertsCount: 0,
   });
+  const [recentAlerts, setRecentAlerts] = useState([]);
 
   useEffect(() => {
-    // Fetch profile + dashboard counters in one place.
+    // Fetch profile + student count + current session alerts.
     const fetchDashboardData = async () => {
       try {
         const token = localStorage.getItem('auth_token');
         if (!token) return;
 
+        const sessionId = localStorage.getItem('current_session_id') || localStorage.getItem('session_id');
         const headers = { Authorization: `Bearer ${token}` };
 
-        const [profileResponse, usersResponse, alertsResponse] = await Promise.all([
+        const [profileResponse, usersResponse] = await Promise.all([
           fetch(`${API_BASE_URL}/api/users/me`, { headers }),
           fetch(`${API_BASE_URL}/api/users/`, { headers }),
-          fetch(API_ENDPOINTS.GET_ALL_EVENTS, { headers }),
         ]);
 
         if (profileResponse.ok) {
@@ -37,15 +39,19 @@ function ExaminerDashboard({ onNavigate }) {
           totalStudents = users.filter((user) => user.role === 'student').length;
         }
 
-        let alertsCount = 0;
-        if (alertsResponse.ok) {
-          const alerts = await alertsResponse.json();
-          alertsCount = Array.isArray(alerts) ? alerts.length : 0;
+        let alerts = [];
+        if (sessionId) {
+          try {
+            alerts = await fetchSessionEvents(sessionId);
+          } catch (alertError) {
+            console.error('Failed to fetch session alerts:', alertError);
+          }
         }
 
+        setRecentAlerts(Array.isArray(alerts) ? alerts.slice(0, 4) : []);
         setStats({
           totalStudents,
-          alertsCount,
+          alertsCount: Array.isArray(alerts) ? alerts.length : 0,
         });
       } catch (err) {
         console.error('Failed to fetch dashboard data:', err);
@@ -353,24 +359,33 @@ function ExaminerDashboard({ onNavigate }) {
             <h2 className="text-white text-xl font-bold mb-6">{t('examiner.dashboard.recentActivity.title')}</h2>
 
             <div className="flex-1 space-y-6">
-              {[
-                { icon: 'alert', title: t('examiner.dashboard.recentActivity.activities.suspicious.title'), desc: t('examiner.dashboard.recentActivity.activities.suspicious.desc'), time: t('examiner.dashboard.recentActivity.activities.suspicious.time'), color: 'orange' },
-                { icon: 'check', title: t('examiner.dashboard.recentActivity.activities.completed.title'), desc: t('examiner.dashboard.recentActivity.activities.completed.desc'), time: t('examiner.dashboard.recentActivity.activities.completed.time'), color: 'emerald' },
-                { icon: 'student', title: t('examiner.dashboard.recentActivity.activities.enrolled.title'), desc: t('examiner.dashboard.recentActivity.activities.enrolled.desc'), time: t('examiner.dashboard.recentActivity.activities.enrolled.time'), color: 'purple' },
-                { icon: 'exam', title: t('examiner.dashboard.recentActivity.activities.saved.title'), desc: t('examiner.dashboard.recentActivity.activities.saved.desc'), time: t('examiner.dashboard.recentActivity.activities.saved.time'), color: 'cyan' },
-              ].map((item, i) => (
-                <div key={i} className="flex gap-4 group cursor-pointer">
-                  <div className="relative mt-1">
-                    <div className={`w-2 h-2 rounded-full bg-${item.color}-400 group-hover:scale-150 transition-transform shadow-[0_0_10px_rgba(currentColor,0.5)] z-10 relative`}></div>
-                    {i !== 3 && <div className="absolute top-2 left-1/2 -translate-x-1/2 w-[1px] h-12 bg-white/10 group-hover:bg-white/20 transition-colors"></div>}
-                  </div>
-                  <div>
-                    <h4 className={`text-sm font-semibold text-slate-200 group-hover:text-${item.color}-300 transition-colors`}>{item.title}</h4>
-                    <p className="text-xs text-slate-400 mt-1">{item.desc}</p>
-                    <span className="text-[10px] text-slate-500 mt-1 block">{item.time}</span>
-                  </div>
+              {recentAlerts.length > 0 ? (
+                recentAlerts.map((alert) => {
+                  const category = (alert.category || '').toUpperCase();
+                  const isCritical = category.includes('YOLO');
+                  const isWarning = category.includes('EYE') || category.includes('HEAD');
+                  const dotClass = isCritical ? 'bg-red-400' : isWarning ? 'bg-orange-400' : 'bg-cyan-400';
+
+                  return (
+                    <div key={alert.id} className="flex gap-4 group cursor-pointer">
+                      <div className="relative mt-1">
+                        <div className={`w-2 h-2 rounded-full ${dotClass} group-hover:scale-150 transition-transform shadow-[0_0_10px_rgba(currentColor,0.5)] z-10 relative`}></div>
+                      </div>
+                      <div>
+                        <h4 className={`text-sm font-semibold text-slate-200 transition-colors ${isCritical ? 'group-hover:text-red-300' : isWarning ? 'group-hover:text-orange-300' : 'group-hover:text-cyan-300'}`}>{alert.description || 'Alert'}</h4>
+                        <p className="text-xs text-slate-400 mt-1">{alert.details || alert.category || 'Violation detected'}</p>
+                        <span className="text-[10px] text-slate-500 mt-1 block">
+                          {alert.timestamp ? new Date(alert.timestamp).toLocaleString() : 'Unknown time'}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })
+              ) : (
+                <div className="text-sm text-slate-400 rounded-xl border border-white/5 bg-white/[0.02] p-4">
+                  No alert data available for the current session.
                 </div>
-              ))}
+              )}
             </div>
 
             <button className="w-full py-3 mt-6 rounded-xl border border-white/10 bg-white/[0.02] hover:bg-white/[0.05] text-sm text-slate-300 font-semibold transition-colors">

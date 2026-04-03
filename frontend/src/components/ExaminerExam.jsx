@@ -1,20 +1,69 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import logo from '../../assets/Untitled (1).png'
 import { useLanguage } from '../contexts/LanguageContext'
+import { examService } from '../services/examService'
 
 function ExaminerExam({ onNavigate }) {
   const { t, language, toggleLanguage } = useLanguage()
   const [filterStatus, setFilterStatus] = useState('all')
+  const [exams, setExams] = useState([])
+  const [loading, setLoading] = useState(true)
 
-  // Mock exam data
-  const exams = [
-    { id: 1, title: 'Mathematics Final 2025', date: '2025-01-20', duration: 120, totalMarks: 100, participants: 45, status: 'scheduled', type: 'Final' },
-    { id: 2, title: 'Physics Midterm', date: '2025-01-15', duration: 90, totalMarks: 80, participants: 38, status: 'ongoing', type: 'Midterm' },
-    { id: 3, title: 'Chemistry Quiz', date: '2025-01-10', duration: 30, totalMarks: 20, participants: 42, status: 'completed', type: 'Quiz' },
-    { id: 4, title: 'Biology Final Exam', date: '2025-01-25', duration: 150, totalMarks: 120, participants: 40, status: 'scheduled', type: 'Final' },
-    { id: 5, title: 'English Literature Test', date: '2025-01-12', duration: 60, totalMarks: 50, participants: 35, status: 'completed', type: 'Test' },
-    { id: 6, title: 'Computer Science Project', date: '2025-01-18', duration: 180, totalMarks: 150, participants: 30, status: 'scheduled', type: 'Project' }
-  ]
+  // Derive exam type from title keywords
+  const getExamType = (title) => {
+    const titleLower = title.toLowerCase()
+    if (titleLower.includes('final')) return 'Final'
+    if (titleLower.includes('midterm')) return 'Midterm'
+    if (titleLower.includes('quiz')) return 'Quiz'
+    if (titleLower.includes('test')) return 'Test'
+    if (titleLower.includes('project')) return 'Project'
+    return 'Exam'
+  }
+
+  // Determine exam status based on created_at date
+  const getExamStatus = (createdAt) => {
+    const created = new Date(createdAt)
+    const now = new Date()
+    const daysDiff = Math.floor((now - created) / (1000 * 60 * 60 * 24))
+    
+    if (daysDiff < 1) return 'scheduled' // Created today or recent
+    if (daysDiff < 30) return 'ongoing' // Created within last month
+    return 'completed' // Older exams
+  }
+
+  // Format date for display
+  const formatDate = (dateString) => {
+    const date = new Date(dateString)
+    return date.toLocaleDateString('en-CA') // YYYY-MM-DD format
+  }
+
+  // Fetch exams on component mount
+  useEffect(() => {
+    const fetchExams = async () => {
+      try {
+        const data = await examService.getAllExams()
+        const processedExams = data.map(exam => ({
+          id: exam.id,
+          title: exam.title,
+          date: formatDate(exam.created_at),
+          duration: exam.duration_minutes,
+          totalMarks: exam.total_marks,
+          participants: Math.floor(Math.random() * 50) + 20, // Placeholder: random 20-69
+          status: getExamStatus(exam.created_at),
+          type: getExamType(exam.title),
+          createdAt: exam.created_at
+        }))
+        setExams(processedExams)
+      } catch (error) {
+        console.error('Failed to load exams:', error)
+        setExams([])
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchExams()
+  }, [])
 
   const filteredExams = exams.filter(exam => filterStatus === 'all' || exam.status === filterStatus)
 
@@ -174,8 +223,23 @@ function ExaminerExam({ onNavigate }) {
           </div>
         </div>
 
-        {/* Exams Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {/* Exams Grid or Loading State */}
+        {loading ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {[...Array(6)].map((_, i) => (
+              <div key={i} className="rounded-2xl border border-white/5 bg-white/5 p-6 backdrop-blur-md animate-pulse">
+                <div className="h-6 bg-white/10 rounded mb-4 w-3/4"></div>
+                <div className="h-4 bg-white/10 rounded mb-4 w-1/2"></div>
+                <div className="space-y-3 mb-6">
+                  <div className="h-4 bg-white/10 rounded"></div>
+                  <div className="h-4 bg-white/10 rounded"></div>
+                  <div className="h-4 bg-white/10 rounded"></div>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : filteredExams.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredExams.map((exam) => (
             <div key={exam.id} className="group flex flex-col justify-between rounded-2xl border border-white/5 bg-white/5 p-6 backdrop-blur-md hover:border-purple-500/30 hover:bg-white/[0.07] transition-all duration-500 relative overflow-hidden">
               <div className="absolute inset-0 bg-gradient-to-br from-purple-500/0 to-cyan-500/0 opacity-0 group-hover:opacity-5 transition-opacity duration-500"></div>
@@ -253,9 +317,8 @@ function ExaminerExam({ onNavigate }) {
               </div>
             </div>
           ))}
-        </div>
-
-        {filteredExams.length === 0 && (
+          </div>
+        ) : (
           <div className="rounded-2xl border border-white/5 bg-white/5 backdrop-blur-md p-16 text-center w-full max-w-2xl mx-auto mt-10">
             <div className="w-20 h-20 rounded-2xl bg-white/5 flex items-center justify-center mx-auto mb-6 border border-white/10">
               <svg className="w-10 h-10 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
