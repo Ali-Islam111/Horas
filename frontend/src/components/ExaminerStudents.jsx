@@ -1,23 +1,83 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import logo from '../../assets/Untitled (1).png'
 import { useLanguage } from '../contexts/LanguageContext'
+import { API_BASE_URL, API_ENDPOINTS } from '../config/api'
 
 function ExaminerStudents({ onNavigate }) {
   const { t, language, toggleLanguage } = useLanguage()
   const [searchQuery, setSearchQuery] = useState('')
   const [filterStatus, setFilterStatus] = useState('all')
+  const [students, setStudents] = useState([])
 
-  // Mock student data
-  const students = [
-    { id: 1, name: 'Ahmed Ali', email: 'ahmed.ali@university.edu', studentId: 'ST001', examsCompleted: 12, averageScore: 85, status: 'active', joinDate: '2024-09-01' },
-    { id: 2, name: 'Sara Mohamed', email: 'sara.mohamed@university.edu', studentId: 'ST002', examsCompleted: 15, averageScore: 92, status: 'active', joinDate: '2024-09-01' },
-    { id: 3, name: 'Youssef Hassan', email: 'youssef.hassan@university.edu', studentId: 'ST003', examsCompleted: 10, averageScore: 78, status: 'active', joinDate: '2024-09-05' },
-    { id: 4, name: 'Mariam Adel', email: 'mariam.adel@university.edu', studentId: 'ST004', examsCompleted: 14, averageScore: 88, status: 'active', joinDate: '2024-09-03' },
-    { id: 5, name: 'Omar Hassan', email: 'omar.hassan@university.edu', studentId: 'ST005', examsCompleted: 8, averageScore: 75, status: 'inactive', joinDate: '2024-09-10' },
-    { id: 6, name: 'Fatima Ibrahim', email: 'fatima.ibrahim@university.edu', studentId: 'ST006', examsCompleted: 11, averageScore: 90, status: 'active', joinDate: '2024-09-02' },
-    { id: 7, name: 'Mohamed Khaled', email: 'mohamed.khaled@university.edu', studentId: 'ST007', examsCompleted: 9, averageScore: 82, status: 'active', joinDate: '2024-09-07' },
-    { id: 8, name: 'Nour Sayed', email: 'nour.sayed@university.edu', studentId: 'ST008', examsCompleted: 13, averageScore: 87, status: 'active', joinDate: '2024-09-04' }
-  ]
+  useEffect(() => {
+    const fetchStudents = async () => {
+      try {
+        const token = localStorage.getItem('auth_token')
+        if (!token) return
+
+        const response = await fetch(`${API_BASE_URL}/api/users/`, {
+          headers: { Authorization: `Bearer ${token}` }
+        })
+
+        const submissionsResponse = await fetch(API_ENDPOINTS.ALL_SUBMISSIONS, {
+          headers: { Authorization: `Bearer ${token}` }
+        })
+
+        if (!response.ok) {
+          throw new Error(`Failed to fetch users: ${response.status}`)
+        }
+
+        const users = await response.json()
+        const submissions = submissionsResponse.ok ? await submissionsResponse.json() : []
+
+        const submissionsByStudent = submissions.reduce((acc, session) => {
+          if (!acc[session.user_id]) {
+            acc[session.user_id] = []
+          }
+          acc[session.user_id].push(session)
+          return acc
+        }, {})
+
+        const getSubmittedSessions = (studentSessions) => (
+          studentSessions
+            .filter((s) => s.final_score !== null && s.final_score !== undefined)
+            .sort((a, b) => new Date(b.submitted_at || b.started_at) - new Date(a.submitted_at || a.started_at))
+        )
+
+        const formatDate = (dateValue) => {
+          if (!dateValue) return '-'
+          const d = new Date(dateValue)
+          if (Number.isNaN(d.getTime())) return '-'
+          return d.toISOString().slice(0, 10)
+        }
+
+        const mappedStudents = users
+          .filter((user) => user.role === 'student')
+          .map((user) => {
+            const studentSessions = submissionsByStudent[user.id] || []
+            const submittedSessions = getSubmittedSessions(studentSessions)
+            const latestSubmitted = submittedSessions[0]
+
+            return {
+              id: user.id,
+              name: user.full_name,
+              email: user.email,
+              studentId: `ST${String(user.id).padStart(3, '0')}`,
+              examsCompleted: submittedSessions.length,
+              latestGrade: latestSubmitted ? latestSubmitted.final_score : null,
+              status: submittedSessions.length > 0 ? 'active' : 'inactive',
+              joinDate: formatDate(latestSubmitted?.submitted_at),
+            }
+          })
+
+        setStudents(mappedStudents)
+      } catch (error) {
+        console.error('Failed to fetch students:', error)
+      }
+    }
+
+    fetchStudents()
+  }, [])
 
   const filteredStudents = students.filter(student => {
     const matchesSearch = student.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -28,10 +88,18 @@ function ExaminerStudents({ onNavigate }) {
   })
 
   const stats = [
-    { label: 'Total Students', value: students.length },
-    { label: 'Active Students', value: students.filter(s => s.status === 'active').length },
-    { label: 'Inactive Students', value: students.filter(s => s.status === 'inactive').length },
-    { label: 'Avg Score', value: `${Math.round(students.reduce((sum, s) => sum + s.averageScore, 0) / students.length)}%` }
+    { label: 'total', value: students.length },
+    { label: 'active', value: students.filter(s => s.status === 'active').length },
+    { label: 'inactive', value: students.filter(s => s.status === 'inactive').length },
+    {
+      label: 'avgScore',
+      value: students.some((s) => s.latestGrade !== null)
+        ? `${Math.round(
+          students.filter((s) => s.latestGrade !== null).reduce((sum, s) => sum + s.latestGrade, 0) /
+          students.filter((s) => s.latestGrade !== null).length
+        )}%`
+        : '0%'
+    }
   ]
 
   return (
@@ -135,7 +203,7 @@ function ExaminerStudents({ onNavigate }) {
           {stats.map((stat, i) => (
             <div key={i} className="group relative rounded-2xl border border-white/5 bg-white/5 p-6 backdrop-blur-md hover:bg-white/[0.07] hover:border-purple-500/30 transition-all duration-500 overflow-hidden">
               <div className={`absolute right-0 top-0 w-24 h-24 bg-purple-500/10 blur-[30px] rounded-full translate-x-1/2 -translate-y-1/2 group-hover:bg-purple-500/20 transition-all`}></div> {/* This div's bg color needs to be dynamic based on stat.color if desired */}
-              <h3 className="text-slate-400 text-sm font-semibold mb-2">{t(`examiner.students.stats.${stat.label.toLowerCase().replace(' ', '') === 'totalstudents' ? 'total' : stat.label.toLowerCase().replace(' ', '') === 'activestudents' ? 'active' : stat.label.toLowerCase().replace(' ', '') === 'inactivestudents' ? 'inactive' : 'avgScore'}`)}</h3>
+              <h3 className="text-slate-400 text-sm font-semibold mb-2">{t(`examiner.students.stats.${stat.label}`)}</h3>
               <p className="text-white text-3xl font-bold">{stat.value}</p>
             </div>
           ))}
@@ -201,7 +269,7 @@ function ExaminerStudents({ onNavigate }) {
                   <th className="text-slate-300 text-xs font-semibold uppercase tracking-wider py-4 px-6">{t('examiner.students.table.name')}</th>
                   <th className="text-slate-300 text-xs font-semibold uppercase tracking-wider py-4 px-6">{t('examiner.students.table.email')}</th>
                   <th className="text-center text-slate-300 text-xs font-semibold uppercase tracking-wider py-4 px-6">{t('examiner.students.table.exams')}</th>
-                  <th className="text-center text-slate-300 text-xs font-semibold uppercase tracking-wider py-4 px-6">{t('examiner.students.table.avgScore')}</th>
+                  <th className="text-center text-slate-300 text-xs font-semibold uppercase tracking-wider py-4 px-6">{language === 'ar' ? 'الدرجة بعد التسليم' : 'Submitted Grade'}</th>
                   <th className="text-center text-slate-300 text-xs font-semibold uppercase tracking-wider py-4 px-6">{t('examiner.students.table.status')}</th>
                   <th className="text-center text-slate-300 text-xs font-semibold uppercase tracking-wider py-4 px-6">{t('examiner.students.table.joinDate')}</th>
                   <th className="text-center text-slate-300 text-xs font-semibold uppercase tracking-wider py-4 px-6">{t('examiner.students.table.actions')}</th>
@@ -217,11 +285,15 @@ function ExaminerStudents({ onNavigate }) {
                     <td className="py-4 px-6 text-sm text-slate-400">{student.email}</td>
                     <td className="py-4 px-6 text-sm text-slate-300 text-center">{student.examsCompleted}</td>
                     <td className="py-4 px-6 text-center">
-                      <span className={`inline-flex items-center justify-center px-2 py-1 rounded-md text-xs font-bold border ${student.averageScore >= 85 ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' :
-                        student.averageScore >= 70 ? 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20' :
-                          'bg-orange-500/10 text-orange-400 border-orange-500/20'
+                      <span className={`inline-flex items-center justify-center px-2 py-1 rounded-md text-xs font-bold border ${student.latestGrade === null
+                        ? 'bg-slate-500/10 text-slate-400 border-slate-500/20'
+                        : student.latestGrade >= 85
+                          ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                          : student.latestGrade >= 70
+                            ? 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20'
+                            : 'bg-orange-500/10 text-orange-400 border-orange-500/20'
                         }`}>
-                        {student.averageScore}%
+                        {student.latestGrade === null ? '-' : `${Math.round(student.latestGrade)}%`}
                       </span>
                     </td>
                     <td className="py-4 px-6 text-center">

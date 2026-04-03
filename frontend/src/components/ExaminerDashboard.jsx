@@ -1,31 +1,60 @@
 import React, { useState, useEffect } from 'react';
 import logo from '../../assets/Untitled (1).png';
 import { useLanguage } from '../contexts/LanguageContext';
-import { API_BASE_URL } from '../config/api';
+import { API_BASE_URL, API_ENDPOINTS } from '../config/api';
 
 function ExaminerDashboard({ onNavigate }) {
   const { t, language, toggleLanguage } = useLanguage();
-  const [currentUser, setCurrentUser] = useState(null)
+  const [currentUser, setCurrentUser] = useState(null);
+  const [stats, setStats] = useState({
+    totalStudents: 0,
+    alertsCount: 0,
+  });
 
   useEffect(() => {
-    // Fetch user profile
-    const fetchProfile = async () => {
+    // Fetch profile + dashboard counters in one place.
+    const fetchDashboardData = async () => {
       try {
         const token = localStorage.getItem('auth_token');
         if (!token) return;
-        const response = await fetch(`${API_BASE_URL}/api/users/me`, {
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
-        if (response.ok) {
-          const data = await response.json();
-          setCurrentUser(data);
+
+        const headers = { Authorization: `Bearer ${token}` };
+
+        const [profileResponse, usersResponse, alertsResponse] = await Promise.all([
+          fetch(`${API_BASE_URL}/api/users/me`, { headers }),
+          fetch(`${API_BASE_URL}/api/users/`, { headers }),
+          fetch(API_ENDPOINTS.GET_ALL_EVENTS, { headers }),
+        ]);
+
+        if (profileResponse.ok) {
+          const profileData = await profileResponse.json();
+          setCurrentUser(profileData);
         }
+
+        let totalStudents = 0;
+        if (usersResponse.ok) {
+          const users = await usersResponse.json();
+          totalStudents = users.filter((user) => user.role === 'student').length;
+        }
+
+        let alertsCount = 0;
+        if (alertsResponse.ok) {
+          const alerts = await alertsResponse.json();
+          alertsCount = Array.isArray(alerts) ? alerts.length : 0;
+        }
+
+        setStats({
+          totalStudents,
+          alertsCount,
+        });
       } catch (err) {
-        console.error('Failed to fetch profile:', err);
+        console.error('Failed to fetch dashboard data:', err);
       }
     };
-    fetchProfile();
+
+    fetchDashboardData();
   }, []);
+
   // Mock data for the chart - representing weekly performance
   const weeklyData = [
     { week: 1, value: 75 },
@@ -148,7 +177,7 @@ function ExaminerDashboard({ onNavigate }) {
               </div>
               <h3 className="text-slate-400 text-sm font-semibold">{t('examiner.dashboard.stats.totalStudents')}</h3>
             </div>
-            <p className="text-white text-4xl font-bold tracking-tight mb-1">200</p>
+            <p className="text-white text-4xl font-bold tracking-tight mb-1">{stats.totalStudents}</p>
             <p className="text-purple-400 text-xs font-medium uppercase tracking-wider">{t('examiner.dashboard.stats.activeEnrollment')}</p>
           </div>
 
@@ -184,7 +213,7 @@ function ExaminerDashboard({ onNavigate }) {
               </div>
               <h3 className="text-slate-400 text-sm font-semibold">{t('examiner.dashboard.stats.aiAlerts')}</h3>
             </div>
-            <p className="text-white text-4xl font-bold tracking-tight mb-1">5</p>
+            <p className="text-white text-4xl font-bold tracking-tight mb-1">{stats.alertsCount}</p>
             <p className="text-orange-400 text-xs font-medium uppercase tracking-wider">{t('examiner.dashboard.stats.needsReview')}</p>
           </div>
 
@@ -310,7 +339,7 @@ function ExaminerDashboard({ onNavigate }) {
 
               {/* X-axis Labels */}
               <div className="absolute bottom-0 left-4 right-0 flex justify-between">
-                {weeklyData.map((week, index) => (
+                {weeklyData.map((week) => (
                   <span key={week.week} className="text-slate-500 text-[10px] font-medium min-w-[20px] text-center">
                     W{week.week}
                   </span>

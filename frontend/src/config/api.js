@@ -32,6 +32,7 @@ export const API_ENDPOINTS = {
   ENROLL:          (examId)    => `${API_BASE_URL}/api/sessions/enroll/${examId}`,
   SUBMIT_EXAM:     (sessionId) => `${API_BASE_URL}/api/sessions/${sessionId}/submit`,
   MY_SUBMISSIONS:  `${API_BASE_URL}/api/sessions/my-submissions`,
+  ALL_SUBMISSIONS: `${API_BASE_URL}/api/sessions/all-submissions`,
 
   // Legacy REST Proctoring endpoints (kept for backward compatibility)
   UPLOAD_FRAME:                `${API_BASE_URL}/upload_frame`,
