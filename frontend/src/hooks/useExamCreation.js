@@ -1,6 +1,6 @@
 // Controller: useExamCreation Hook - Business logic for exam creation
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { examService } from '../services/examService';
 import { parseExamFileWithGemini } from '../services/geminiService';
 
@@ -87,6 +87,9 @@ export const useExamCreation = () => {
     localStorage.setItem('exam_draft', JSON.stringify(draftData));
   }, [examTitle, examDescription, accessCode, duration, totalMarks, passingMarks, questions, currentStep]);
 
+  // Computed: live running total of assigned question marks
+  const assignedMarks = questions.reduce((sum, q) => sum + (Number(q.marks) || 0), 0);
+
   const nextStep = () => {
     if (currentStep === 1) {
       const errors = {};
@@ -94,8 +97,21 @@ export const useExamCreation = () => {
       if (!duration || parseInt(duration) <= 0) errors.duration = 'Valid duration is required';
       if (!totalMarks || parseInt(totalMarks) <= 0) errors.totalMarks = 'Valid total marks is required';
       if (!passingMarks || parseInt(passingMarks) <= 0) errors.passingMarks = 'Valid passing marks is required';
-      if (parseInt(passingMarks) > parseInt(totalMarks)) errors.passingMarks = 'Passing marks cannot exceed total marks';
+      if (parseInt(passingMarks) >= parseInt(totalMarks)) errors.passingMarks = 'Passing marks must be less than total marks';
 
+      if (Object.keys(errors).length > 0) {
+        setStepErrors(errors);
+        return;
+      }
+    }
+
+    if (currentStep === 2) {
+      const errors = {};
+      if (questions.length === 0) {
+        errors.questions = 'At least one question is required';
+      } else if (assignedMarks !== parseInt(totalMarks)) {
+        errors.questions = `Assigned marks (${assignedMarks}) must equal total marks (${totalMarks})`;
+      }
       if (Object.keys(errors).length > 0) {
         setStepErrors(errors);
         return;
@@ -247,8 +263,8 @@ export const useExamCreation = () => {
       title: examTitle.trim(),
       description: examDescription.trim(),
       duration_minutes: parseInt(duration) || 30,
-      total_marks: parseInt(totalMarks) || 100,
-      passing_marks: parseInt(passingMarks) || 50,
+      total_marks: parseInt(totalMarks),
+      passing_marks: parseInt(passingMarks),
       access_code: accessCode.trim(),
       questions: backendQuestions,
     };
@@ -309,6 +325,7 @@ export const useExamCreation = () => {
     geminiApiKey,
     currentStep,
     stepErrors,
+    assignedMarks,
 
     // Actions
     updateGeminiApiKey,

@@ -25,6 +25,7 @@ function ExamCreation({ onNavigate }) {
     geminiApiKey,
     currentStep,
     stepErrors,
+    assignedMarks,
 
     // Actions
     updateGeminiApiKey,
@@ -456,10 +457,16 @@ function ExamCreation({ onNavigate }) {
                     {language === 'ar' ? `الأسئلة (${questions.length})` : `Questions (${questions.length})`}
                   </h2>
                   <div className="flex items-center gap-3">
-                    <span className="text-slate-400 text-sm font-semibold hidden sm:inline-block">
+                    <span className={`text-sm font-semibold hidden sm:inline-block px-3 py-1 rounded-lg border ${
+                      assignedMarks === parseInt(totalMarks)
+                        ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30'
+                        : assignedMarks > parseInt(totalMarks)
+                          ? 'text-red-400 bg-red-500/10 border-red-500/30'
+                          : 'text-slate-400 bg-white/5 border-white/10'
+                    }`}>
                       {language === 'ar'
-                        ? `المجموع: ${questions.reduce((sum, q) => sum + (Number(q.marks) || 0), 0)} / ${totalMarks}`
-                        : `Total: ${questions.reduce((sum, q) => sum + (Number(q.marks) || 0), 0)} / ${totalMarks}`}
+                        ? `المجموع: ${assignedMarks} / ${totalMarks}`
+                        : `Assigned: ${assignedMarks} / ${totalMarks}`}
                     </span>
                     <button
                       onClick={() => setShowAddQuestion(true)}
@@ -554,24 +561,36 @@ function ExamCreation({ onNavigate }) {
                     ))}
                   </div>
                 )}
-                <div className="pt-6 mt-6 border-t border-white/5 flex justify-end gap-4">
-                  <button
-                    onClick={prevStep}
-                    className={`px-8 py-3 rounded-xl font-bold transition-all duration-300 border border-white/10 hover:bg-white/5 hover:border-white/20 text-white ${language === 'ar' ? 'flex-row-reverse' : ''}`}
-                  >
-                    {language === 'ar' ? 'السابق' : 'Back Step'}
-                  </button>
-                  <button
-                    onClick={nextStep}
-                    disabled={questions.length === 0}
-                    className={`px-8 py-3 rounded-xl font-bold text-white transition-all duration-300 shadow-[0_0_20px_rgba(6,182,212,0.3)] hover:shadow-[0_0_30px_rgba(6,182,212,0.5)] bg-gradient-to-r from-cyan-600 to-purple-600 flex items-center gap-2 hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed ${language === 'ar' ? 'flex-row-reverse' : ''}`}
-                  >
-                    <span>{language === 'ar' ? 'التالي' : 'Next Step'}</span>
-                    <svg className={`w-5 h-5 ${language === 'ar' ? 'rotate-180' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                      <line x1="5" y1="12" x2="19" y2="12" />
-                      <polyline points="12 5 19 12 12 19" />
-                    </svg>
-                  </button>
+                <div className="pt-6 mt-6 border-t border-white/5 flex flex-col gap-4">
+                  {stepErrors.questions && (
+                    <div className={`p-4 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-sm font-medium flex items-center gap-3 ${language === 'ar' ? 'flex-row-reverse text-right' : ''}`}>
+                      <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <circle cx="12" cy="12" r="10" />
+                        <line x1="12" y1="8" x2="12" y2="12" />
+                        <line x1="12" y1="16" x2="12.01" y2="16" />
+                      </svg>
+                      {stepErrors.questions}
+                    </div>
+                  )}
+                  <div className="flex justify-end gap-4">
+                    <button
+                      onClick={prevStep}
+                      className={`px-8 py-3 rounded-xl font-bold transition-all duration-300 border border-white/10 hover:bg-white/5 hover:border-white/20 text-white ${language === 'ar' ? 'flex-row-reverse' : ''}`}
+                    >
+                      {language === 'ar' ? 'السابق' : 'Back Step'}
+                    </button>
+                    <button
+                      onClick={nextStep}
+                      disabled={questions.length === 0 || assignedMarks !== parseInt(totalMarks)}
+                      className={`px-8 py-3 rounded-xl font-bold text-white transition-all duration-300 shadow-[0_0_20px_rgba(6,182,212,0.3)] hover:shadow-[0_0_30px_rgba(6,182,212,0.5)] bg-gradient-to-r from-cyan-600 to-purple-600 flex items-center gap-2 hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed ${language === 'ar' ? 'flex-row-reverse' : ''}`}
+                    >
+                      <span>{language === 'ar' ? 'التالي' : 'Next Step'}</span>
+                      <svg className={`w-5 h-5 ${language === 'ar' ? 'rotate-180' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <line x1="5" y1="12" x2="19" y2="12" />
+                        <polyline points="12 5 19 12 12 19" />
+                      </svg>
+                    </button>
+                  </div>
                 </div>
               </div>
             )}

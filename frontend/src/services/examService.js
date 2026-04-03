@@ -152,8 +152,8 @@ export const examService = {
     return matched || safeOptions[0];
   },
 
-  /** Format questions from the external AI parser into backend-compatible schema
-   *  Backend expects: { question_text, question_type, choice: string[], correct_choice }
+  /** Format questions from the external AI parser into backend-compatible schema.
+   *  Backend expects: { question_text, question_type, choice: string[], correct_choice, points }
    */
   formatParsedQuestions(parsedQuestions) {
     return parsedQuestions.map((q) => {
@@ -166,20 +166,33 @@ export const examService = {
 
       return {
         question_text: q.question,
-        question_type: q.type === 'MCQ' ? 'MCQ' : 'MCQ', // default MCQ
+        question_type: q.type === 'TF' ? 'TF' : 'MCQ',
         choice: options,
         correct_choice: examService.resolveCorrectChoiceText(options, q.answer || ''),
+        points: Number(q.marks) || 1,
       };
     });
   },
 
-  /** Validate exam form data before sending to backend */
+  /** Validate exam form data before sending to backend.
+   *  Mirrors the backend's ExamCreateBatch validator to catch errors early. */
   validateExam(examData) {
     const errors = [];
     if (!examData.title?.trim()) errors.push('Exam title is required');
     if (!examData.access_code?.trim()) errors.push('Access code is required');
     if (!examData.duration_minutes || examData.duration_minutes <= 0)
       errors.push('Valid duration is required (minutes)');
+    if (!examData.total_marks || examData.total_marks <= 0)
+      errors.push('Total marks must be a positive number');
+    if (!examData.passing_marks || examData.passing_marks <= 0)
+      errors.push('Passing marks must be a positive number');
+    if (examData.passing_marks >= examData.total_marks)
+      errors.push('Passing marks must be strictly less than total marks');
+    if (examData.questions?.length > 0) {
+      const assignedTotal = examData.questions.reduce((s, q) => s + (q.points || 0), 0);
+      if (assignedTotal !== examData.total_marks)
+        errors.push(`Sum of question points (${assignedTotal}) must equal total marks (${examData.total_marks})`);
+    }
     return { isValid: errors.length === 0, errors };
   },
 };

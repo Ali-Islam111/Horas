@@ -51,11 +51,21 @@ export function useAuthController(onNavigate) {
     try {
       const data = await AuthService.login(email, password);
       
-      // Map UI role 'instructor' → backend role 'teacher'
-      const storedRole = role === 'instructor' ? 'teacher' : 'student';
-      AuthService.setSession(data.access_token, storedRole);
+      // Fetch true role from backend database instead of relying on frontend toggle
+      const profile = await AuthService.getProfile(data.access_token);
+      const trueRole = profile.role;
 
-      if (role === 'instructor') {
+      // Reject if they tried to log into instructor portal but are a student
+      if (role === 'instructor' && trueRole !== 'teacher') {
+        AuthService.clearSession();
+        setLoginError('Your account does not have instructor privileges. Please register as an instructor or login as a student.');
+        setIsLoading(false);
+        return;
+      }
+
+      AuthService.setSession(data.access_token, trueRole);
+
+      if (trueRole === 'teacher') {
         onNavigate('examiner');
       } else {
         onNavigate('dashboard');

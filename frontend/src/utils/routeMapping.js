@@ -101,7 +101,8 @@ export const getInitialPage = () => {
 
   // Try to restore from sessionStorage (survives page refresh within same tab)
   const savedPage = sessionStorage.getItem('currentPage')
-  if (savedPage && pageRoutes[`/${savedPage}`] === savedPage) {
+  const knownPages = new Set(Object.values(pageRoutes))
+  if (savedPage && knownPages.has(savedPage)) {
     return savedPage
   }
 
