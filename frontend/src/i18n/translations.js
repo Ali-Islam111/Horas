@@ -484,6 +484,22 @@ const translations = {
                     essayNote: 'Note: Essay questions require manual grading by the examiner.',
                     cancelBtn: 'Cancel'
                 },
+                addQuestion: {
+                    title: 'Add New Question',
+                    type: 'Question Type',
+                    questionText: 'Question *',
+                    questionPlaceholder: 'Enter your question here...',
+                    marks: 'Marks *',
+                    options: 'Options',
+                    optionPlaceholder: 'Option',
+                    markCorrect: 'Click the circle to mark correct answer',
+                    correctAnswer: 'Correct Answer',
+                    trueBtn: 'True',
+                    falseBtn: 'False',
+                    essayNote: 'Note: Essay questions require manual grading by the examiner.',
+                    cancelBtn: 'Cancel',
+                    addBtn: 'Add Question'
+                },
                 summary: {
                     title: 'Exam Summary',
                     totalQ: 'Total Questions',
@@ -1018,6 +1034,22 @@ const translations = {
                     falseBtn: 'خطأ',
                     essayNote: 'ملاحظة: تتطلب الأسئلة المقالية تصحيحاً يدوياً من قبل الممتحن.',
                     cancelBtn: 'إلغاء'
+                },
+                addQuestion: {
+                    title: 'إضافة سؤال جديد',
+                    type: 'نوع السؤال',
+                    questionText: 'السؤال *',
+                    questionPlaceholder: 'أدخل سؤالك هنا...',
+                    marks: 'الدرجات *',
+                    options: 'الخيارات',
+                    optionPlaceholder: 'الخيار',
+                    markCorrect: 'انقر على الدائرة لتحديد الإجابة الصحيحة',
+                    correctAnswer: 'الإجابة الصحيحة',
+                    trueBtn: 'صح',
+                    falseBtn: 'خطأ',
+                    essayNote: 'ملاحظة: تتطلب الأسئلة المقالية تصحيحاً يدوياً من قبل الممتحن.',
+                    cancelBtn: 'إلغاء',
+                    addBtn: 'إضافة سؤال'
                 },
                 summary: {
                     title: 'ملخص الامتحان',
