@@ -34,6 +34,19 @@ class AuthService {
   }
 
   /**
+   * Fetches the user's true profile from the database.
+   * @param {string} token 
+   * @returns {Object} User profile data including true role
+   */
+  static async getProfile(token) {
+    const response = await fetch(`${API_BASE_URL}/api/users/me`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    if (!response.ok) throw new Error('Failed to fetch profile');
+    return await response.json();
+  }
+
+  /**
    * Registers a new user.
    * @param {string} email 
    * @param {string} fullName 

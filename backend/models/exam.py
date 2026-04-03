@@ -11,6 +11,8 @@ class Exam(Base):
     description = Column(String, nullable=False)
     access_code = Column(String, nullable=False, unique=True, index=True) # Should be generated but for now it's gonna be filled.
     duration_minutes = Column(Integer, nullable=False, default=30)
+    total_marks = Column(Integer, nullable=False)
+    passing_marks = Column(Integer, nullable=False)
     teacher_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 

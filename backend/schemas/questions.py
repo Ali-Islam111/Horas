@@ -5,7 +5,7 @@ class QuestionBase(BaseModel):
     question_text: str
     question_type: str
     choice: List[str]  # e.g. ["Queue", "Stack", "Tree", "Graph"]
-    points: int = 1
+    points: int
 
 class QuestionCreate(QuestionBase):
     correct_choice: str
