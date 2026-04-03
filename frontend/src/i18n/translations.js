@@ -503,6 +503,10 @@ const translations = {
                 summary: {
                     title: 'Exam Summary',
                     totalQ: 'Total Questions',
+                    totalQs: 'Total Questions',
+                    calcMarks: 'Calculated Marks',
+                    reqMarks: 'Required Marks',
+                    markWarning: 'Warning: Calculated marks do not match Total Marks.',
                     totalM: 'Total Marks',
                     createBtn: 'Create Exam'
                 }
@@ -1054,6 +1058,10 @@ const translations = {
                 summary: {
                     title: 'ملخص الامتحان',
                     totalQ: 'إجمالي الأسئلة',
+                    totalQs: 'إجمالي الأسئلة',
+                    calcMarks: 'الدرجات المحسوبة',
+                    reqMarks: 'الدرجات المطلوبة',
+                    markWarning: 'تحذير: الدرجات المحسوبة لا تطابق إجمالي الدرجات.',
                     totalM: 'إجمالي الدرجات',
                     createBtn: 'إنشاء امتحان'
                 }

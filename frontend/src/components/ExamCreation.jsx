@@ -56,8 +56,15 @@ function ExamCreation({ onNavigate }) {
     correctAnswerIndex: null
   })
 
+  const areAllOptionsFilled = currentQuestion.options.every((option) => option.trim())
+
   const addNewQuestion = () => {
-    if (currentQuestion.question.trim() && currentQuestion.marks) {
+    if (
+      currentQuestion.question.trim() &&
+      currentQuestion.marks &&
+      areAllOptionsFilled &&
+      currentQuestion.correctAnswerIndex !== null
+    ) {
       const preparedQuestion = {
         type: currentQuestion.type,
         question: currentQuestion.question,
@@ -670,48 +677,67 @@ function ExamCreation({ onNavigate }) {
               {language === 'ar' ? 'ملخص التقدم' : 'Progress'}
             </h3>
 
-            <div className={`space-y-6 relative before:absolute before:inset-0 ${language === 'ar' ? 'before:right-5 before:translate-x-1/2' : 'before:left-5 before:-translate-x-1/2'} before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-slate-700 before:to-transparent`}>
-              {/* Step 1 Node */}
-              <div className={`relative flex items-center gap-4 group is-active ${language === 'ar' ? 'flex-row-reverse' : ''}`}>
-                <div className={`relative z-10 flex items-center justify-center w-10 h-10 rounded-full border border-white/10 bg-slate-800 text-slate-500 group-[.is-active]:bg-cyan-500 group-[.is-active]:text-cyan-50 shrink-0 shadow shadow-slate-900 ${currentStep > 1 ? 'bg-cyan-500/20 text-cyan-400 border-cyan-500/50' : currentStep === 1 ? 'bg-cyan-600 border-cyan-400 text-white' : ''}`}>
-                  {currentStep > 1 ? <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg> : "1"}
-                </div>
-                <div className={`flex-1 p-4 rounded border border-white/5 bg-slate-800/50 shadow ${language === 'ar' ? 'text-right' : ''}`}>
-                  <div className="flex items-center justify-between space-x-2 mb-1">
-                    <div className="font-bold text-slate-200">{language === 'ar' ? 'إعدادات الاختبار' : 'Exam Settings'}</div>
+            <div className="space-y-4">
+              <div className={`rounded-xl border p-4 transition-all duration-300 ${currentStep > 1 ? 'border-cyan-500/30 bg-cyan-500/5' : currentStep === 1 ? 'border-cyan-500/40 bg-cyan-500/10' : 'border-white/10 bg-slate-800/40'}`}>
+                <div className={`flex items-start gap-3 ${language === 'ar' ? 'flex-row-reverse text-right' : ''}`}>
+                  <div className={`w-9 h-9 rounded-full border flex items-center justify-center shrink-0 ${currentStep > 1 ? 'border-cyan-400 bg-cyan-500/20 text-cyan-300' : currentStep === 1 ? 'border-cyan-400 bg-cyan-600 text-white' : 'border-white/10 bg-slate-800 text-slate-400'}`}>
+                    {currentStep > 1 ? (
+                      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="20 6 9 17 4 12" />
+                      </svg>
+                    ) : (
+                      '1'
+                    )}
                   </div>
-                  <div className="text-slate-400 text-xs">
-                    {examTitle ? <span className="text-cyan-400">{examTitle}</span> : 'Incomplete'}
-                  </div>
-                </div>
-              </div>
-
-              {/* Step 2 Node */}
-              <div className={`relative flex items-center gap-4 group is-active ${language === 'ar' ? 'flex-row-reverse' : ''}`}>
-                <div className={`relative z-10 flex items-center justify-center w-10 h-10 rounded-full border border-white/10 bg-slate-800 text-slate-500 shrink-0 shadow shadow-slate-900 ${currentStep > 2 ? 'bg-cyan-500/20 text-cyan-400 border-cyan-500/50' : currentStep === 2 ? 'bg-cyan-600 border-cyan-400 text-white' : ''}`}>
-                  {currentStep > 2 ? <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg> : "2"}
-                </div>
-                <div className={`flex-1 p-4 rounded border border-white/5 bg-slate-800/50 shadow flex-col ${language === 'ar' ? 'text-right' : ''}`}>
-                  <div className="flex items-center justify-between space-x-2 mb-1">
-                    <div className="font-bold text-slate-200">{language === 'ar' ? 'الأسئلة' : 'Questions'}</div>
-                  </div>
-                  <div className="text-slate-400 text-xs">
-                    {questions.length > 0 ? <span className="text-cyan-400">{questions.length} Added</span> : 'Incomplete'}
+                  <div className="flex-1 min-w-0">
+                    <div className="font-bold text-slate-100">{language === 'ar' ? 'إعدادات الاختبار' : 'Exam Settings'}</div>
+                    <div className="text-xs mt-1">
+                      {examTitle ? (
+                        <span className="text-cyan-400">{language === 'ar' ? 'مكتمل' : 'Completed'}</span>
+                      ) : (
+                        <span className="text-slate-400">{language === 'ar' ? 'غير مكتمل' : 'Incomplete'}</span>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
 
-              {/* Step 3 Node */}
-              <div className={`relative flex items-center gap-4 group is-active ${language === 'ar' ? 'flex-row-reverse' : ''}`}>
-                <div className={`relative z-10 flex items-center justify-center w-10 h-10 rounded-full border border-white/10 bg-slate-800 text-slate-500 shrink-0 shadow shadow-slate-900 ${currentStep === 3 ? 'bg-cyan-600 border-cyan-400 text-white' : ''}`}>
-                  3
-                </div>
-                <div className={`flex-1 p-4 rounded border border-white/5 bg-slate-800/50 shadow flex-col ${language === 'ar' ? 'text-right' : ''}`}>
-                  <div className="flex items-center justify-between space-x-2 mb-1">
-                    <div className="font-bold text-slate-200">{language === 'ar' ? 'مراجعة ونشر' : 'Review'}</div>
+              <div className={`rounded-xl border p-4 transition-all duration-300 ${currentStep > 2 ? 'border-cyan-500/30 bg-cyan-500/5' : currentStep === 2 ? 'border-cyan-500/40 bg-cyan-500/10' : 'border-white/10 bg-slate-800/40'}`}>
+                <div className={`flex items-start gap-3 ${language === 'ar' ? 'flex-row-reverse text-right' : ''}`}>
+                  <div className={`w-9 h-9 rounded-full border flex items-center justify-center shrink-0 ${currentStep > 2 ? 'border-cyan-400 bg-cyan-500/20 text-cyan-300' : currentStep === 2 ? 'border-cyan-400 bg-cyan-600 text-white' : 'border-white/10 bg-slate-800 text-slate-400'}`}>
+                    {currentStep > 2 ? (
+                      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="20 6 9 17 4 12" />
+                      </svg>
+                    ) : (
+                      '2'
+                    )}
                   </div>
-                  <div className="text-slate-400 text-xs">
-                    Pending
+                  <div className="flex-1 min-w-0">
+                    <div className="font-bold text-slate-100">{language === 'ar' ? 'الأسئلة' : 'Questions'}</div>
+                    <div className="text-xs mt-1">
+                      {questions.length > 0 ? (
+                        <span className="text-cyan-400">
+                          {language === 'ar' ? `تمت إضافة ${questions.length}` : `${questions.length} Added`}
+                        </span>
+                      ) : (
+                        <span className="text-slate-400">{language === 'ar' ? 'غير مكتمل' : 'Incomplete'}</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className={`rounded-xl border p-4 transition-all duration-300 ${currentStep === 3 ? 'border-cyan-500/40 bg-cyan-500/10' : 'border-white/10 bg-slate-800/40'}`}>
+                <div className={`flex items-start gap-3 ${language === 'ar' ? 'flex-row-reverse text-right' : ''}`}>
+                  <div className={`w-9 h-9 rounded-full border flex items-center justify-center shrink-0 ${currentStep === 3 ? 'border-cyan-400 bg-cyan-600 text-white' : 'border-white/10 bg-slate-800 text-slate-400'}`}>
+                    3
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-bold text-slate-100">{language === 'ar' ? 'مراجعة ونشر' : 'Review & Publish'}</div>
+                    <div className="text-xs mt-1">
+                      <span className="text-slate-400">{language === 'ar' ? 'قيد الانتظار' : 'Pending'}</span>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -800,7 +826,7 @@ function ExamCreation({ onNavigate }) {
                   </button>
                   <button
                     onClick={addNewQuestion}
-                    disabled={!currentQuestion.question.trim() || !currentQuestion.marks || currentQuestion.correctAnswerIndex === null}
+                    disabled={!currentQuestion.question.trim() || !currentQuestion.marks || currentQuestion.correctAnswerIndex === null || !areAllOptionsFilled}
                     className="flex-1 px-5 py-2.5 rounded-xl font-bold text-white bg-gradient-to-r from-purple-600 to-cyan-600 shadow-[0_0_20px_rgba(168,85,247,0.3)] hover:shadow-[0_0_30px_rgba(168,85,247,0.5)] transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed group relative overflow-hidden"
                   >
                     <span className="relative z-10">{t('examiner.examCreation.addQuestion.addBtn')}</span>
