@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from typing import List
 
 from core.database import get_db
-from core.dependencies import get_current_user, get_current_student
+from core.dependencies import get_current_user, get_current_student, get_current_teacher
 from core import crud
 from schemas.session import SessionCreate, SessionResponse, StudentAnswerSubmit, SubmissionResult, AIStatusResponse
 from services.exam_scoring import ScoringEngine
@@ -100,6 +100,14 @@ def get_my_submissions(
 ):
     """Student only: Get all their own exam submissions."""
     return crud.get_student_submissions(db, user_id=current_student.id)
+
+@router.get("/all-submissions", response_model=List[SessionResponse])
+def get_all_submissions(
+    db: Session = Depends(get_db),
+    current_teacher = Depends(get_current_teacher)
+):
+    """Teacher only: Get all student submissions and sessions."""
+    return crud.get_all_submissions(db)
 
 @router.get("/{session_id}/events", response_model=List[EventOut])
 def get_session_events(session_id: int, db: Session = Depends(get_db)):

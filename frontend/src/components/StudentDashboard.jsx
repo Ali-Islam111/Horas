@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import logo from '../../assets/Untitled (1).png'
 import { useLanguage } from '../contexts/LanguageContext'
 import { API_BASE_URL } from '../config/api'
+import { sessionService } from '../services/sessionService'
 
 function StudentDashboard({ onNavigate, examController }) {
   const { t, language, toggleLanguage } = useLanguage()
@@ -9,6 +10,7 @@ function StudentDashboard({ onNavigate, examController }) {
   const { exams, isLoading, error } = state
   const { handleEnrollExam } = actions
   const [currentUser, setCurrentUser] = useState(null)
+  const [submissions, setSubmissions] = useState([])
   const [timeRemaining, setTimeRemaining] = useState({ hours: 0, minutes: 56, seconds: 23 })
 
   useEffect(() => {
@@ -30,6 +32,23 @@ function StudentDashboard({ onNavigate, examController }) {
     };
     fetchProfile();
   }, []);
+
+  useEffect(() => {
+    const fetchSubmissions = async () => {
+      try {
+        const token = localStorage.getItem('auth_token')
+        if (!token) return
+
+        const data = await sessionService.getMySubmissions()
+        setSubmissions(Array.isArray(data) ? data : [])
+      } catch (err) {
+        console.error('Failed to fetch submissions:', err)
+        setSubmissions([])
+      }
+    }
+
+    fetchSubmissions()
+  }, [])
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -57,6 +76,34 @@ function StudentDashboard({ onNavigate, examController }) {
   const formatTime = (time) => {
     const pad = (num) => String(num).padStart(2, '0')
     return `${pad(time.hours)}:${pad(time.minutes)}:${pad(time.seconds)}`
+  }
+
+  const getExamProgress = (examId) => {
+    const matchedSubmission = submissions
+      .filter((submission) => submission.exam_id === examId)
+      .sort((a, b) => new Date(b.submitted_at || b.started_at) - new Date(a.submitted_at || a.started_at))[0]
+
+    if (!matchedSubmission) {
+      return {
+        status: 'available',
+        label: language === 'ar' ? 'متاح' : 'Available',
+        buttonLabel: t('student.dashboard.startExamBtn'),
+      }
+    }
+
+    if (matchedSubmission.status === 'completed' || matchedSubmission.final_score !== null && matchedSubmission.final_score !== undefined) {
+      return {
+        status: 'completed',
+        label: language === 'ar' ? 'تم التسليم' : 'Submitted',
+        buttonLabel: t('student.submission.reviewSub'),
+      }
+    }
+
+    return {
+      status: 'in_progress',
+      label: language === 'ar' ? 'قيد التقدم' : 'In Progress',
+      buttonLabel: language === 'ar' ? 'متابعة الامتحان' : 'Continue Exam',
+    }
   }
 
   return (
@@ -240,12 +287,21 @@ function StudentDashboard({ onNavigate, examController }) {
           {!isLoading && exams.length > 0 && (
             <div className="space-y-4">
               {exams.map((exam) => (
+                (() => {
+                  const progress = getExamProgress(exam.id)
+                  const badgeStyles = progress.status === 'completed'
+                    ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
+                    : progress.status === 'in_progress'
+                      ? 'bg-orange-500/20 text-orange-300 border-orange-500/30'
+                      : 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30'
+
+                  return (
                 <div key={exam.id} className="bg-slate-950/40 border border-white/5 rounded-xl p-5 flex flex-col md:flex-row items-start md:items-center justify-between gap-6 hover:border-cyan-500/30 transition-all">
                   <div className="flex-1">
                     <div className="flex items-center gap-3 mb-2">
                       <h4 className="text-white text-lg font-bold tracking-tight">{exam.title}</h4>
-                      <span className="px-3 py-1 rounded-full text-xs font-bold bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 uppercase tracking-widest">
-                        Available
+                      <span className={`px-3 py-1 rounded-full text-xs font-bold border uppercase tracking-widest ${badgeStyles}`}>
+                        {progress.label}
                       </span>
                     </div>
                     {exam.description && (
@@ -269,12 +325,14 @@ function StudentDashboard({ onNavigate, examController }) {
                     >
                       <div className="absolute inset-0 bg-gradient-to-r from-cyan-600 to-purple-600 opacity-90 group-hover:opacity-100 transition-opacity"></div>
                       <span className="relative z-10 flex items-center gap-2">
-                        {t('student.dashboard.startExamBtn')}
+                        {progress.buttonLabel}
                         <svg className="w-4 h-4 ltr:group-hover:translate-x-1 rtl:group-hover:-translate-x-1 transition-transform" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
                       </span>
                     </button>
                   </div>
                 </div>
+                  )
+                })()
               ))}
             </div>
           )}
