@@ -7,27 +7,27 @@ function ExaminerAlerts({ onNavigate }) {
   const { t, language, toggleLanguage } = useLanguage()
   const sessionId = localStorage.getItem('current_session_id') || localStorage.getItem('session_id')
   const [filterType, setFilterType] = useState('all')
-  const [rawEvents, setRawEvents]   = useState([])
-  const [loading, setLoading]       = useState(true)
+  const [rawEvents, setRawEvents] = useState([])
+  const [loading, setLoading] = useState(true)
   const [fetchError, setFetchError] = useState(null)
 
   // ── Map a DB event → alert card shape ─────────────────────────────────────
   const mapEventToAlert = (ev) => {
     const cat = (ev.category || '').toUpperCase()
-    let type     = 'warning'
+    let type = 'warning'
     let severity = 'medium'
     if (cat.includes('YOLO')) { type = 'cheating'; severity = 'critical' }
     else if (cat.includes('EYE') || cat.includes('HEAD')) { type = 'warning'; severity = 'high' }
 
     return {
-      id:       ev.id,
+      id: ev.id,
       type,
       severity,
-      status:   'new',
-      student:  ev.session_id ? `Session #${ev.session_id}` : null,
-      exam:     null,
-      message:  `${ev.description} — ${ev.details}`,
-      time:     ev.timestamp ? new Date(ev.timestamp).toLocaleString() : 'Unknown',
+      status: 'new',
+      student: ev.session_id ? `Session #${ev.session_id}` : null,
+      exam: null,
+      message: `${ev.description} — ${ev.details}`,
+      time: ev.timestamp ? new Date(ev.timestamp).toLocaleString() : 'Unknown',
     }
   }
 
@@ -61,9 +61,9 @@ function ExaminerAlerts({ onNavigate }) {
   const filteredAlerts = alerts.filter(alert => filterType === 'all' || alert.type === filterType)
 
   const stats = {
-    total:    alerts.length,
+    total: alerts.length,
     critical: alerts.filter(a => a.severity === 'critical').length,
-    new:      alerts.filter(a => a.status === 'new').length,
+    new: alerts.filter(a => a.status === 'new').length,
     resolved: alerts.filter(a => a.status === 'resolved').length,
   }
 
@@ -114,91 +114,99 @@ function ExaminerAlerts({ onNavigate }) {
       <div className="fixed top-[-10%] right-[-5%] w-[500px] h-[500px] rounded-full bg-orange-600/10 blur-[120px] pointer-events-none z-0" />
       <div className="fixed bottom-[-10%] left-[-10%] w-[600px] h-[600px] rounded-full bg-red-600/10 blur-[150px] pointer-events-none z-0" />
 
-      {/* Top Header */}
-      <header className="relative z-50 border-b border-white/5 bg-slate-950/50 backdrop-blur-2xl px-6 py-4">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <div className="relative w-12 h-12 rounded-xl overflow-hidden p-[1px] bg-gradient-to-br from-purple-500 via-cyan-500 to-emerald-500 shadow-[0_0_20px_-5px_rgba(168,85,247,0.4)]">
-              <div className="w-full h-full bg-slate-950 rounded-[11px] flex items-center justify-center p-2">
-                <img src={logo} alt="Horus" className="w-full h-full object-contain drop-shadow-lg" />
+      {/* Unified Single-Row Navbar */}
+      <header className="relative z-50 border-b border-white/[0.06] px-6">
+        <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-purple-500/40 to-transparent" />
+        <div className="max-w-7xl mx-auto flex items-center justify-between h-16 gap-4">
+
+          {/* Left — Logo + Brand */}
+          <div className="flex items-center gap-3 flex-shrink-0">
+            <div className="relative w-9 h-9 rounded-xl overflow-hidden p-[1px] bg-gradient-to-br from-purple-500 via-cyan-500 to-emerald-500 shadow-[0_0_18px_-4px_rgba(168,85,247,0.5)]">
+              <div className="w-full h-full bg-slate-950 rounded-[10px] flex items-center justify-center p-1.5">
+                <img src={logo} alt="Horas" className="w-full h-full object-contain drop-shadow-lg" />
               </div>
             </div>
-            <div>
-              <h1 className="text-white text-xl font-bold tracking-tight">{t('examiner.dashboard.welcomeStr')} Dr. Ibrahim Mohamed</h1>
-              <p className="text-slate-400 text-sm">{t('examiner.alerts.welcomeDesc')}</p>
-            </div>
+            <span className="text-white font-extrabold text-lg tracking-tight hidden sm:block">HORAS</span>
+            <div className="hidden md:block w-px h-5 bg-white/10 mx-1" />
           </div>
 
-          <div className="flex items-center gap-4">
+          {/* Center — Pill Navigation Tabs */}
+          <nav className="flex-1 flex items-center justify-center">
+            <div className="flex items-center gap-1 bg-white/[0.04] border border-white/[0.07] rounded-2xl p-1 overflow-x-auto no-scrollbar">
+              {[
+                { id: 'examiner', label: t('examiner.dashboard.nav.overview'), icon: <path d="M18 20V10M12 20V4M6 20v-6" /> },
+                { id: 'examinerStudents', label: t('examiner.dashboard.nav.students'), icon: <><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></> },
+                { id: 'examinerExam', label: t('examiner.dashboard.nav.exams'), icon: <><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" /><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" /></> },
+                { id: 'report', label: t('examiner.dashboard.nav.reports'), icon: <><polyline points="23 6 13.5 15.5 8.5 10.5 1 18" /><polyline points="17 6 23 6 23 12" /></> },
+                { id: 'examinerAlerts', label: t('examiner.dashboard.nav.alerts'), icon: <><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" /><line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" /></> },
+                { id: 'examinerSettings', label: t('examiner.dashboard.nav.settings'), icon: <><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></> },
+              ].map((tab) => {
+                const isActive = tab.id === 'examinerAlerts';
+                return (
+                  <button
+                    key={tab.id}
+                    onClick={() => onNavigate(tab.id)}
+                    className={`relative flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all duration-200 whitespace-nowrap overflow-hidden active:scale-90 ${isActive
+                        ? 'bg-gradient-to-r from-purple-600/80 to-cyan-600/80 text-white border border-purple-500/30 nav-tab-active'
+                        : 'text-slate-400 hover:text-slate-200 hover:bg-white/5 hover:scale-[1.04] hover:shadow-[0_0_12px_rgba(168,85,247,0.15)]'
+                      }`}
+                  >
+                    <svg className="w-3.5 h-3.5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      {tab.icon}
+                    </svg>
+                    <span className="hidden sm:inline">{tab.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </nav>
+
+          {/* Right — User + Actions */}
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {/* User Avatar */}
+            {(() => {
+              const name = localStorage.getItem('full_name') || localStorage.getItem('username') || 'E';
+              return (
+                <div className="hidden md:flex items-center gap-2.5 px-3 py-1.5 rounded-xl bg-white/[0.04] border border-white/[0.07] cursor-default">
+                  <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-purple-500 to-cyan-500 flex items-center justify-center text-white text-xs font-bold shadow-[0_0_10px_rgba(168,85,247,0.4)]">
+                    {name.charAt(0).toUpperCase()}
+                  </div>
+                  <span className="text-slate-300 text-xs font-semibold max-w-[100px] truncate">{name}</span>
+                </div>
+              );
+            })()}
             <button
               onClick={toggleLanguage}
-              className="px-4 py-2 rounded-xl text-sm font-bold uppercase tracking-widest text-slate-300 hover:text-white transition-colors bg-white/5 hover:bg-white/10 border border-white/10 backdrop-blur-md hidden sm:block"
+              className="px-3 py-2 rounded-xl text-xs font-bold text-slate-300 hover:text-white transition-all bg-white/[0.04] hover:bg-white/10 border border-white/[0.07] hover:border-white/20"
             >
-              {language === 'en' ? 'عربي' : 'English'}
-            </button>
-            <button
-              onClick={() => onNavigate('proctoringMonitor')}
-              className="relative group px-5 py-2.5 rounded-xl font-semibold text-sm transition-all duration-300 flex items-center gap-2 overflow-hidden shadow-[0_0_20px_rgba(16,185,129,0.2)] hover:shadow-[0_0_30px_rgba(16,185,129,0.4)] hover:-translate-y-0.5"
-            >
-              <div className="absolute inset-0 bg-gradient-to-r from-emerald-600 to-teal-600 opacity-90 group-hover:opacity-100 transition-opacity"></div>
-              <svg className="w-4 h-4 relative z-10 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="12" cy="12" r="3" />
-                <path d="M12 5c-7 0-10 7-10 7s3 7 10 7 10-7 10-7-3-7-10-7z" />
-              </svg>
-              <span className="relative z-10 text-white">{t('examiner.dashboard.stats.liveMonitor')}</span>
+              {language === 'en' ? 'عربي' : 'EN'}
             </button>
             <button
               onClick={() => onNavigate('createExam')}
-              className="relative group px-5 py-2.5 rounded-xl text-slate-300 hover:text-white font-semibold text-sm transition-all duration-300 flex items-center gap-2 border border-white/10 bg-white/5 hover:bg-white/10 hover:border-white/20 hover:-translate-y-0.5"
+              className="relative group flex items-center gap-1.5 px-4 py-2 rounded-xl font-semibold text-xs transition-all duration-300 overflow-hidden shadow-[0_0_18px_rgba(168,85,247,0.2)] hover:shadow-[0_0_28px_rgba(168,85,247,0.45)] hover:-translate-y-0.5"
             >
-              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <div className="absolute inset-0 bg-gradient-to-r from-purple-600 to-cyan-600 opacity-90 group-hover:opacity-100 transition-opacity" />
+              <svg className="w-3.5 h-3.5 relative z-10 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <line x1="12" y1="5" x2="12" y2="19" />
                 <line x1="5" y1="12" x2="19" y2="12" />
               </svg>
-              <span>{t('examiner.dashboard.createExam')}</span>
+              <span className="relative z-10 text-white hidden sm:inline">{t('examiner.dashboard.createExam')}</span>
             </button>
             <button
               onClick={() => onNavigate('login')}
-              className="px-5 py-2.5 rounded-xl font-semibold text-sm transition-all duration-300 flex items-center gap-2 border border-white/10 bg-white/5 hover:bg-white/10 hover:border-white/20 text-slate-300 hover:text-white hover:-translate-y-0.5"
+              title={t('examiner.dashboard.logout')}
+              className="p-2 rounded-xl text-slate-400 hover:text-red-400 transition-all bg-white/[0.04] hover:bg-red-500/10 border border-white/[0.07] hover:border-red-500/20"
             >
               <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
                 <polyline points="16 17 21 12 16 7" />
                 <line x1="21" y1="12" x2="9" y2="12" />
               </svg>
-              {t('examiner.dashboard.logout')}
             </button>
           </div>
+
         </div>
       </header>
-
-      {/* Navigation Tabs */}
-      <nav className="relative z-40 border-b border-white/5 bg-white/[0.02] backdrop-blur-xl px-6 py-0">
-        <div className="max-w-7xl mx-auto flex items-center gap-8 overflow-x-auto no-scrollbar">
-          {[
-            { id: 'examiner', label: t('examiner.dashboard.nav.overview'), icon: <path d="M18 20V10M12 20V4M6 20v-6" /> },
-            { id: 'examinerStudents', label: t('examiner.dashboard.nav.students'), icon: <><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></> },
-            { id: 'examinerExam', label: t('examiner.dashboard.nav.exams'), icon: <><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" /><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" /></> },
-            { id: 'report', label: t('examiner.dashboard.nav.reports'), icon: <><polyline points="23 6 13.5 15.5 8.5 10.5 1 18" /><polyline points="17 6 23 6 23 12" /></> },
-            { id: 'examinerAlerts', label: t('examiner.dashboard.nav.alerts'), icon: <><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" /><line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" /></> },
-            { id: 'examinerSettings', label: t('examiner.dashboard.nav.settings'), icon: <><circle cx="12" cy="12" r="3" /><path d="M12 1v6m0 6v6" /></> },
-          ].map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => onNavigate(tab.id)}
-              className={`flex items-center gap-2 py-4 text-sm font-semibold transition-colors relative ${tab.id === 'examinerAlerts' ? 'text-purple-400' : 'text-slate-400 hover:text-slate-200'}`}
-            >
-              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                {tab.icon}
-              </svg>
-              {tab.label}
-              {tab.id === 'examinerAlerts' && (
-                <div className="absolute bottom-0 left-0 w-full h-[2px] bg-gradient-to-r from-purple-500 to-cyan-500 rounded-t-full shadow-[0_-2px_10px_rgba(168,85,247,0.5)]"></div>
-              )}
-            </button>
-          ))}
-        </div>
-      </nav>
 
       {/* Main Content */}
       <main className="relative z-10 p-6 max-w-7xl mx-auto space-y-6">

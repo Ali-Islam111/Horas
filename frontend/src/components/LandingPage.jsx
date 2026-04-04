@@ -1,9 +1,22 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import logo from '../../assets/Untitled (1).png';
 import { useLanguage } from '../contexts/LanguageContext';
 
 export default function LandingPage({ onNavigate }) {
   const { t, language, toggleLanguage } = useLanguage();
+  const [scrolled, setScrolled] = useState(false);
+  const [scrollProgress, setScrollProgress] = useState(0);
+
+  useEffect(() => {
+    const handleScroll = () => {
+      const scrollY = window.scrollY;
+      setScrolled(scrollY > 20);
+      const docH = document.documentElement.scrollHeight - window.innerHeight;
+      setScrollProgress(docH > 0 ? (scrollY / docH) * 100 : 0);
+    };
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
 
   return (
     <div className="min-h-screen bg-[#030014] text-slate-200 overflow-hidden relative selection:bg-purple-500/30">
@@ -17,51 +30,73 @@ export default function LandingPage({ onNavigate }) {
       <div className="absolute top-[20%] right-[-10%] w-[600px] h-[600px] rounded-full bg-cyan-600/20 blur-[150px] pointer-events-none" />
       <div className="absolute bottom-[-20%] left-[20%] w-[800px] h-[800px] rounded-full bg-emerald-600/10 blur-[150px] pointer-events-none" />
 
-      {/* Navigation Bar */}
-      <nav className="relative z-50 px-6 py-6 border-b border-white/5 bg-slate-950/50 backdrop-blur-2xl text-slate-200">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-4 group cursor-pointer" onClick={() => onNavigate('home')}>
-            <div className="relative w-12 h-12 rounded-xl overflow-hidden p-[1px] bg-gradient-to-br from-purple-500 via-cyan-500 to-emerald-500 group-hover:shadow-[0_0_30px_-5px_rgba(168,85,247,0.5)] transition-all duration-500">
-              <div className="w-full h-full bg-slate-950 rounded-[11px] flex items-center justify-center p-2">
-                <img src={logo} alt="Horus" className="w-full h-full object-contain drop-shadow-lg group-hover:scale-110 transition-transform duration-500" />
+      {/* ── Scroll Progress Bar ─────────────────────────────────── */}
+      <div className="fixed top-0 left-0 right-0 h-[2px] z-[60] pointer-events-none">
+        <div
+          className="h-full bg-gradient-to-r from-purple-500 via-cyan-400 to-emerald-400 transition-all duration-150 ease-out shadow-[0_0_8px_rgba(168,85,247,0.6)]"
+          style={{ width: `${scrollProgress}%` }}
+        />
+      </div>
+
+      {/* ── Floating Navbar ─────────────────────────────────────── */}
+      <div className="fixed top-3 left-0 right-0 z-50 flex justify-center px-4">
+        <nav className="w-full max-w-6xl flex items-center justify-between h-14 px-4 rounded-2xl transition-all duration-500">
+
+          {/* Left — Brand */}
+          <div
+            className="flex items-center gap-3 cursor-pointer group flex-shrink-0"
+            onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+          >
+            <div className="relative w-8 h-8 rounded-xl overflow-hidden p-[1px] bg-gradient-to-br from-purple-500 via-cyan-500 to-emerald-500 shadow-[0_0_16px_-4px_rgba(168,85,247,0.6)] group-hover:shadow-[0_0_22px_-2px_rgba(168,85,247,0.8)] transition-all duration-300">
+              <div className="w-full h-full bg-slate-950 rounded-[10px] flex items-center justify-center p-1">
+                <img src={logo} alt="Horas" className="w-full h-full object-contain drop-shadow-lg group-hover:scale-110 transition-transform duration-300" />
               </div>
             </div>
-            <span className="text-3xl font-black tracking-tighter bg-gradient-to-r from-white via-slate-200 to-slate-400 bg-clip-text text-transparent">
+            <span className="text-white font-black text-xl tracking-tight bg-gradient-to-r from-white via-slate-200 to-slate-400 bg-clip-text text-transparent group-hover:from-purple-300 group-hover:via-white group-hover:to-cyan-300 transition-all duration-300">
               {t('landing.horusTitle')}
             </span>
           </div>
 
-          <div className="flex gap-4 items-center">
+
+
+          {/* Right — Actions */}
+          <div className="flex items-center gap-2 flex-shrink-0">
             {/* Language Toggle */}
             <button
               onClick={toggleLanguage}
-              className="px-3 py-1.5 rounded-full text-xs font-bold uppercase tracking-widest hover:text-white transition-colors hover:bg-white/5 border border-white/10"
+              className="px-3 py-1.5 rounded-lg text-xs font-bold text-slate-400 hover:text-white transition-all bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.06] hover:border-white/20"
             >
               {language === 'en' ? 'عربي' : 'EN'}
             </button>
+
+            {/* Sign In */}
             <button
               onClick={() => onNavigate('login')}
-              className="px-6 py-2.5 rounded-full text-sm font-medium hover:text-white transition-colors hover:bg-white/5"
+              className="hidden sm:flex px-5 py-2 rounded-xl text-sm font-semibold text-slate-300 hover:text-white transition-all bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.06] hover:border-white/20"
             >
               {t('landing.signIn')}
             </button>
+
+            {/* Get Started — gradient pill */}
             <button
               onClick={() => onNavigate('create')}
-              className="relative group px-6 py-2.5 rounded-full text-sm font-medium overflow-hidden"
+              className="relative group flex items-center gap-2 px-5 py-2 rounded-xl text-sm font-bold overflow-hidden transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_0_24px_rgba(168,85,247,0.5)]"
             >
-              <div className="absolute inset-0 bg-gradient-to-r from-purple-600 via-cyan-600 to-emerald-600 group-hover:opacity-80 transition-opacity"></div>
-              <div className="absolute inset-[1px] bg-slate-950 rounded-full transition-all group-hover:bg-opacity-0 z-10"></div>
-              <span className="relative z-20 group-hover:text-white transition-colors bg-gradient-to-r from-purple-400 to-cyan-400 bg-clip-text text-transparent group-hover:bg-none">
-                {t('landing.getStarted')}
-              </span>
+              <div className="absolute inset-0 bg-gradient-to-r from-purple-600 via-cyan-600 to-emerald-500 opacity-90 group-hover:opacity-100 transition-opacity" />
+              {/* Shimmer */}
+              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700" />
+              <span className="relative z-10 text-white">{t('landing.getStarted')}</span>
+              <svg className={`relative z-10 w-3.5 h-3.5 text-white transition-transform group-hover:${language === 'ar' ? '-translate-x-0.5' : 'translate-x-0.5'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d={language === 'ar' ? 'M15 19l-7-7 7-7' : 'M9 5l7 7-7 7'} />
+              </svg>
             </button>
           </div>
-        </div>
-      </nav>
+        </nav>
+      </div>
 
       <main className="relative z-10 flex flex-col items-center">
         {/* Hero Section */}
-        <section className="w-full px-6 pt-32 pb-20 max-w-7xl mx-auto flex flex-col items-center text-center">
+        <section className="w-full px-6 pt-40 pb-20 max-w-7xl mx-auto flex flex-col items-center text-center">
 
           {/* Animated Hero Logo */}
           <div className="relative mb-8 w-40 h-40 md:w-56 md:h-56 group cursor-pointer">

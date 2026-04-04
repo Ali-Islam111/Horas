@@ -148,68 +148,174 @@
 }
 
 @keyframes shimmer {
-  0% { background-position: -200% center; }
-  100% { background-position: 200% center; }
+  0% {
+    background-position: -200% center;
+  }
+
+  100% {
+    background-position: 200% center;
+  }
 }
 
 @keyframes floatOrb {
-  0%, 100% { transform: translateY(0px) translateX(0px) scale(1); }
-  25% { transform: translateY(-30px) translateX(15px) scale(1.05); }
-  50% { transform: translateY(-15px) translateX(-10px) scale(0.97); }
-  75% { transform: translateY(-40px) translateX(5px) scale(1.03); }
+
+  0%,
+  100% {
+    transform: translateY(0px) translateX(0px) scale(1);
+  }
+
+  25% {
+    transform: translateY(-30px) translateX(15px) scale(1.05);
+  }
+
+  50% {
+    transform: translateY(-15px) translateX(-10px) scale(0.97);
+  }
+
+  75% {
+    transform: translateY(-40px) translateX(5px) scale(1.03);
+  }
 }
 
 @keyframes fadeSlideUp {
-  from { opacity: 0; transform: translateY(24px); }
-  to   { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(24px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 @keyframes pulseRing {
-  0%   { transform: scale(1); opacity: 0.6; }
-  100% { transform: scale(1.6); opacity: 0; }
+  0% {
+    transform: scale(1);
+    opacity: 0.6;
+  }
+
+  100% {
+    transform: scale(1.6);
+    opacity: 0;
+  }
 }
 
 @keyframes rotateBorder {
-  from { transform: rotate(0deg); }
-  to   { transform: rotate(360deg); }
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 @keyframes progressFill {
   from { width: 0%; }
 }
 
+/* ── Nav Tab Magnetic Snap + Halo Ring ──────────────────────────── */
+
+/* 1 — Magnetic snap: climbs from below with springy overshoot */
+@keyframes navTabMag {
+  0%   { transform: translateY(10px) scale(0.84); opacity: 0;   }
+  42%  { transform: translateY(-4px) scale(1.06); opacity: 1;   }
+  68%  { transform: translateY(1.5px) scale(0.97);              }
+  100% { transform: translateY(0)    scale(1);                  }
+}
+
+/* 2 — Halo ring expands outward and fades */
+@keyframes navTabHalo {
+  0%   { box-shadow: 0 0 0  0px rgba(168,85,247,0.7), 0 0 0  0px rgba(6,182,212,0.4); }
+  45%  { box-shadow: 0 0 0  5px rgba(168,85,247,0.18),0 0 0 10px rgba(6,182,212,0.1); }
+  100% { box-shadow: 0 0 0  9px rgba(168,85,247,0),   0 0 0 18px rgba(6,182,212,0);   }
+}
+
+/* 3 — Diagonal glint: thin streak from top-left to bottom-right */
+@keyframes navTabGlint {
+  0%   { transform: translate(-120%, -120%) rotate(32deg); opacity: 0;   }
+  20%  { opacity: 0.75; }
+  100% { transform: translate(260%,  260%) rotate(32deg); opacity: 0;   }
+}
+
+.nav-tab-active {
+  animation:
+    navTabMag  0.45s cubic-bezier(0.22, 1.25, 0.36, 1) both,
+    navTabHalo 0.65s ease-out both;
+}
+
+.nav-tab-active::after {
+  content: '';
+  position: absolute;
+  top: 0; left: 0;
+  width: 14px;
+  height: 220%;
+  background: linear-gradient(180deg, transparent, rgba(255,255,255,0.55), transparent);
+  animation: navTabGlint 0.5s ease-out 0.07s both;
+  pointer-events: none;
+}
+
 /* Utility classes */
 .animate-shimmer {
-  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.15), transparent);
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.15), transparent);
   background-size: 200% auto;
   animation: shimmer 2s linear infinite;
 }
 
-.animate-float-orb { animation: floatOrb 8s ease-in-out infinite; }
-.animate-float-orb-slow { animation: floatOrb 12s ease-in-out infinite reverse; }
+.animate-float-orb {
+  animation: floatOrb 8s ease-in-out infinite;
+}
 
-.animate-fade-slide-up { animation: fadeSlideUp 0.5s ease-out forwards; }
+.animate-float-orb-slow {
+  animation: floatOrb 12s ease-in-out infinite reverse;
+}
+
+.animate-fade-slide-up {
+  animation: fadeSlideUp 0.5s ease-out forwards;
+}
 
 .animate-pulse-ring {
   animation: pulseRing 1.8s ease-out infinite;
 }
 
 /* Staggered field animations */
-.field-stagger-1 { animation: fadeSlideUp 0.4s ease-out 0.05s both; }
-.field-stagger-2 { animation: fadeSlideUp 0.4s ease-out 0.12s both; }
-.field-stagger-3 { animation: fadeSlideUp 0.4s ease-out 0.19s both; }
-.field-stagger-4 { animation: fadeSlideUp 0.4s ease-out 0.26s both; }
-.field-stagger-5 { animation: fadeSlideUp 0.4s ease-out 0.33s both; }
-.field-stagger-6 { animation: fadeSlideUp 0.4s ease-out 0.40s both; }
+.field-stagger-1 {
+  animation: fadeSlideUp 0.4s ease-out 0.05s both;
+}
+
+.field-stagger-2 {
+  animation: fadeSlideUp 0.4s ease-out 0.12s both;
+}
+
+.field-stagger-3 {
+  animation: fadeSlideUp 0.4s ease-out 0.19s both;
+}
+
+.field-stagger-4 {
+  animation: fadeSlideUp 0.4s ease-out 0.26s both;
+}
+
+.field-stagger-5 {
+  animation: fadeSlideUp 0.4s ease-out 0.33s both;
+}
+
+.field-stagger-6 {
+  animation: fadeSlideUp 0.4s ease-out 0.40s both;
+}
 
 /* Floating label inputs */
-.floating-label-group { position: relative; }
-.floating-label-group input:focus + label,
-.floating-label-group input:not(:placeholder-shown) + label {
+.floating-label-group {
+  position: relative;
+}
+
+.floating-label-group input:focus+label,
+.floating-label-group input:not(:placeholder-shown)+label {
   transform: translateY(-22px) scale(0.8);
   opacity: 1;
   color: var(--label-color, #a855f7);
 }
+
 .floating-label-group label {
   position: absolute;
   left: 40px;
@@ -222,8 +328,13 @@
 }
 
 /* Glow input ring */
-.glow-input-purple:focus { box-shadow: 0 0 0 2px rgba(168,85,247,0.35), 0 0 20px rgba(168,85,247,0.2); }
-.glow-input-emerald:focus { box-shadow: 0 0 0 2px rgba(16,185,129,0.35), 0 0 20px rgba(16,185,129,0.2); }
+.glow-input-purple:focus {
+  box-shadow: 0 0 0 2px rgba(168, 85, 247, 0.35), 0 0 20px rgba(168, 85, 247, 0.2);
+}
+
+.glow-input-emerald:focus {
+  box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.35), 0 0 20px rgba(16, 185, 129, 0.2);
+}
 
 :root {
   font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
@@ -272,7 +383,7 @@ body {
   width: 100vw;
 }
 
-h1 {
+.landing-hero h1 {
   font-size: 3.2em;
   line-height: 1.1;
 }
