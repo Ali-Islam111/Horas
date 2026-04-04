@@ -36,7 +36,6 @@ TARGET_FPS        = 30
 
 # ── Performance: frame subsampling ───────────────────────────
 MEDIAPIPE_EVERY   = 1
-GLOW_EVERY        = 3
 YOLO_EVERY        = 6
 
 # FIX (V8.0): Anomaly models don't need 30Hz updates.
@@ -54,7 +53,6 @@ CAM_BUFFER_SIZE   = 1
 # ── Calibration ───────────────────────────────────────────────
 CALIB_SECONDS     = 6
 CALIB_FPS_EST     = 15
-MAX_CALIB_WAIT    = 60.0    # seconds before skipping calibration if no face is found
 
 # ── Head Pose (solvePnP) ──────────────────────────────────────
 YAW_THRESHOLD     = 35.0
@@ -97,48 +95,40 @@ LIP_LEFT_ID   = 78;  LIP_RIGHT_ID = 308
 LIP_OPEN_THR  = 0.042
 LIP_CONSEC    = 30
 
-# ── Glow ──────────────────────────────────────────────────────
-GLOW_V_SPIKE_MIN  = 12.0
-GLOW_V_SPIKE_MAX  = 40.0
-GLOW_S_DROP_MIN   = 8.0
-GLOW_S_DROP_MAX   = 30.0
-GLOW_FLICKER_MIN  = 15.0
-GLOW_FLICKER_MAX  = 80.0
-GLOW_BLUE_EXCESS  = 20;  GLOW_AREA_MIN = 0.10
-GLOW_FUSION_THR   = 0.52
-GLOW_SMOOTH       = 14
-
 # ── Identity ──────────────────────────────────────────────────
-ID_MODEL      = "ArcFace";  ID_BACKEND    = "retinaface"
-ID_THRESHOLD  = 0.68;       ID_REF_FRAMES = 5
-ID_CHECK_EVERY= 60
+ID_MODEL       = "ArcFace";  ID_BACKEND     = "retinaface"
+ID_THRESHOLD   = 0.75        # raised from 0.68 — was causing false mismatches on same person
+ID_REF_FRAMES  = 15          # frames per angle during guided enrollment (3 angles × 15 = 45 total)
+ID_CHECK_EVERY = 60
 
-# ── YOLO ──────────────────────────────────────────────────────
-YOLO_MODEL    = "yolo11n.pt"
-YOLO_CONF_DEFAULT = 0.55
-YOLO_CONFS    = {
-    "person":      0.75,
-    "cell phone":  0.68,
-    "book":        0.60,
+# ── YOLO — Dual Model ─────────────────────────────────────────
+# Model 1: fine-tuned proctoring model — detects exam-specific objects
+#   0=Book  1=Earphone  2=Mobile_phone  3=cap  4=headset  5=smart_watch  6=sunglasses
+YOLO_MODEL_PROCTOR = os.path.join(MODELS_DIR, "yolo_proctoring.pt")
+YOLO_CONFS_PROCTOR = {
+    "Book":         0.60,
+    "Mobile_phone": 0.75,
+    "Earphone":     0.60,
+    "headset":      0.60,
+    "smart_watch":  0.60,
+    "sunglasses":   0.55,
+    "cap":          0.55,
 }
-YOLO_CLASSES  = None
-YOLO_FLAG_ITEMS = {"cell phone", "book"}
-YOLO_MIN_PX   = 80
+YOLO_CLASSES_PROCTOR = [0, 1, 2, 3, 4, 5, 6]
+YOLO_FLAG_ITEMS      = {"Mobile_phone", "Book", "Earphone", "headset", "smart_watch"}
 
-# ── LLM Vision Verifier ───────────────────────────────────────
-LLM_VERIFIER_ENABLED  = True
-GEMINI_API_KEY        = ""
-LLM_VERIFY_CLASSES    = {"cell phone", "book"}
-LLM_VERIFY_TIMEOUT    = 4.0
+# Model 2: COCO yolo11n — used ONLY for person count (multi-person detection)
+YOLO_MODEL_COCO      = "yolo11n.pt"
+YOLO_CONF_PERSON     = 0.75   # high conf for person to avoid false multi-person alerts
+YOLO_CLASSES_COCO    = [0]    # person=0 only
 
-# FIX (V8.0): Fallback model list instead of a single model string.
-# If the primary model is deprecated or returns 404, the verifier
-# retries each entry in order before falling back to YOLO-only.
-GEMINI_MODELS = [
-    "gemini-1.5-flash-latest",
-    "gemini-1.5-flash",
-    "gemini-1.0-pro-vision",
-]
+YOLO_CONF_DEFAULT    = 0.55
+YOLO_INPUT_W         = 640
+YOLO_INPUT_H         = 384
+YOLO_MIN_PX          = 80
+
+# ── LLM Vision Verifier (disabled — reserved for future use) ──
+LLM_VERIFIER_ENABLED  = False
 
 # ── Audio ─────────────────────────────────────────────────────
 SAMPLE_RATE   = 16000;  AUDIO_CHUNK_SEC = 1;  AUDIO_COOLDOWN = 10.0
@@ -154,6 +144,57 @@ AUDIO_MIME_PRIORITY = [
     "audio/mp4;codecs=mp4a.40.2", "audio/mp4",
     "audio/wav", "audio/x-wav",
 ]
+
+# WHISPER_MODEL_CUDA:
+#   Model used when a CUDA GPU is detected.
+#   "large-v3" is the best available for Egyptian dialect.
+#   VRAM usage: ~3.0 GB at float16 — leaves headroom for YOLO on the same GPU.
+#   Do NOT change to "large-v2" — v3 has better Arabic dialect coverage.
+#
+# WHISPER_MODEL_CPU:
+#   Model used on CPU (deployment without GPU, or local testing).
+#   "medium" is the minimum viable size for Egyptian dialect on CPU.
+#   "tiny"/"base" are NOT used — their MSA bias is the core problem.
+#   CPU inference on a 3s chunk: ~2-4s on i5/i7 (borderline real-time).
+#
+# WHISPER_LANGUAGE:
+#   Force the decoder to Arabic tokens. Without this, Whisper sometimes
+#   hallucinates English for short Egyptian utterances.
+#
+# WHISPER_BEAM_SIZE / WHISPER_BEST_OF:
+#   Larger beam = better dialect accuracy at cost of ~20% more inference time.
+#   beam_size=5, best_of=5 is the sweet spot for exam-room audio quality.
+#
+# WHISPER_VAD_THRESHOLD:
+#   Silero VAD sensitivity. 0.40 (vs default 0.45) catches short Egyptian
+#   affirmatives: "آه", "لأ", "أيوه" that the old threshold clipped.
+#
+# WHISPER_MIN_SPEECH_MS:
+#   200ms catches single-word responses. Old value was 300ms.
+ 
+WHISPER_MODEL_CUDA    = "large-v3"
+WHISPER_MODEL_CPU     = "medium"
+WHISPER_LANGUAGE      = "ar"
+WHISPER_BEAM_SIZE     = 5
+WHISPER_BEST_OF       = 5
+WHISPER_VAD_THRESHOLD = 0.40
+WHISPER_MIN_SPEECH_MS = 200
+ 
+# ── Audio: Egyptian Arabic initial decoder prompt ─────────────
+#
+# This sentence is passed as initial_prompt to Whisper's decoder.
+# Being autoregressive, the decoder's token probabilities for the
+# entire segment are influenced by this starting context.
+# Written in Egyptian colloquial Arabic (not MSA) to maximize
+# the dialect prior. Do not translate to MSA — it reduces accuracy.
+#
+# Translation: "The student is sitting the exam and must be completely
+#               silent. Speaking or talking to anyone is not allowed."
+ 
+WHISPER_INITIAL_PROMPT = (
+    "الطالب بيأدي الامتحان ولازم يكون ساكت خالص. "
+    "ممنوع الكلام أو التحدث مع أي حد."
+)
 
 # FIX (V8.0): Adaptive noise floor using exponential moving average.
 # Old approach: lock in a floor after a 6-second calibration window.
@@ -191,7 +232,7 @@ def _load_tuning_hints():
 _load_tuning_hints()
 
 ANOMALY_FEATURES = ["yaw_dev","pitch_dev","roll_dev",
-                    "gaze_h","gaze_v","lip_lar","glow_score"]
+                    "gaze_h","gaze_v","lip_lar"]
 N_FEATURES = len(ANOMALY_FEATURES)
 
 # ── Attention ─────────────────────────────────────────────────
@@ -205,17 +246,20 @@ ATTN_ALERT_THR=40; ATTN_SUSTAIN_TICKS=8
 ATTN_HISTORY_MAX = 18_000
 
 # ── Alert cooldowns ───────────────────────────────────────────
-COOLDOWN_HEAD_AWAY   = 20.0
-COOLDOWN_GAZE        = 20.0
-COOLDOWN_LIP         = 25.0
-COOLDOWN_BLINK       = 60.0
-COOLDOWN_GLOW        = 30.0
-COOLDOWN_NO_FACE     = 12.0
-COOLDOWN_MULTI_PERSON= 15.0
-COOLDOWN_YOLO_ITEM   = 15.0
-COOLDOWN_IDENTITY    = 30.0
-COOLDOWN_ANOMALY     = 30.0
-COOLDOWN_ATTN_SYSTEM = 60.0
+COOLDOWN_HEAD_AWAY    = 20.0
+COOLDOWN_GAZE         = 20.0
+COOLDOWN_LIP          = 25.0
+COOLDOWN_BLINK        = 60.0
+COOLDOWN_NO_FACE      = 12.0
+FACE_ABSENT_WARN_SEC  = 12   # seconds before "may have left" warning
+FACE_ABSENT_GONE_SEC  = 30   # seconds before "student left" high alert
+FACE_ABSENT_CRIT_SEC  = 60   # seconds before critical escalation to proctor
+COOLDOWN_MULTI_PERSON = 15.0
+COOLDOWN_YOLO_ITEM    = 15.0
+COOLDOWN_UNKNOWN_OBJ  = 120.0  # capture once per 2 min — unknown objects logged but not spammed
+COOLDOWN_IDENTITY     = 30.0
+COOLDOWN_ANOMALY      = 30.0
+COOLDOWN_ATTN_SYSTEM  = 60.0
 
 # FIX (V8.0): When a student fails enrollment, fire a periodic alert
 # every 2 minutes so the exam is never silently unmonitored for identity.
@@ -223,11 +267,16 @@ COOLDOWN_NO_ENROLLMENT = 120.0
 
 # ── Severity ──────────────────────────────────────────────────
 SEV = {
-    "head_away":2,"gaze_away":1,"lip_moving":1,"glow":2,
-    "no_face":3,"multi_person":3,"phone":2,"book":2,
+    "head_away":2,"gaze_away":1,"lip_moving":1,
+    "no_face":3,
+    "face_absent_warn": 3,
+    "face_absent_gone": 4,
+    "face_absent_crit": 5,
+    "multi_person":3,"phone":2,"book":2,
     "whisper":2,"multi_talk":2,"media":1,"identity":5,
     "iforest":2,"lstm":2,
-    "no_enrollment":3,   # FIX (V8.0): enrollment failure is HIGH severity
+    "no_enrollment":3,
+    "unknown_object":1,  # low severity — logged for report, not a hard alert
 }
 
 # ── Scalability notes ─────────────────────────────────────────
@@ -246,5 +295,5 @@ REPORT_COLORS = {
 CATEGORY_COLORS = {
     "EYE/HEAD":"#e67e22","GAZE":"#e67e22","IDENTITY":"#8e44ad",
     "AUDIO":"#2980b9","YOLO":"#e63946","ANOMALY":"#1a936f",
-    "LIP":"#2980b9","GLOW":"#f4a261","SYSTEM":"#6c757d","BLINK":"#e67e22",
+    "LIP":"#2980b9","SYSTEM":"#6c757d","BLINK":"#e67e22","UNKNOWN":"#95a5a6",
 }

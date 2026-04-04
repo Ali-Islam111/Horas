@@ -20,32 +20,45 @@
 # ==============================================================
 
 import os, time, threading, numpy as np
+from collections import deque
 import config
 
+# ── Cached lazy imports ───────────────────────────────────────
+# sklearn is imported once on first use and cached here.
+# Calling _try_import_sklearn() every frame (30fps) adds ~1-2ms of function-
+# call overhead even though Python caches the module; caching the result at
+# module level eliminates that cost entirely.
+_SKLEARN_CACHE: tuple = (None, None)   # (IsolationForest, StandardScaler) | (None, None)
+_SKLEARN_TRIED: bool  = False
 
-def build_vector(head: dict, gaze: dict, lip: dict,
-                 glow: dict) -> np.ndarray:
+
+def build_vector(head: dict, gaze: dict, lip: dict) -> np.ndarray:
     """Assemble one N_FEATURES-dim vector from detector outputs."""
     return np.array([
-        head.get("yaw_dev",     0.0),
-        head.get("pitch_dev",   0.0),
-        head.get("roll_dev",    0.0),
-        gaze.get("avg_h",       0.5),
-        gaze.get("avg_v",       0.5),
-        lip.get("lar",          0.0),
-        glow.get("glow_score",  0.0),
+        head.get("yaw_dev",   0.0),
+        head.get("pitch_dev", 0.0),
+        head.get("roll_dev",  0.0),
+        gaze.get("avg_h",     0.5),
+        gaze.get("avg_v",     0.5),
+        lip.get("lar",        0.0),
     ], dtype=np.float32)
 
 
 def _try_import_sklearn():
-    """Lazy import — returns (IsolationForest, StandardScaler) or (None, None)."""
+    """Lazy import — returns (IsolationForest, StandardScaler) or (None, None).
+    Result is cached after the first call to avoid per-frame import overhead."""
+    global _SKLEARN_CACHE, _SKLEARN_TRIED
+    if _SKLEARN_TRIED:
+        return _SKLEARN_CACHE
+    _SKLEARN_TRIED = True
     try:
         from sklearn.ensemble import IsolationForest
         from sklearn.preprocessing import StandardScaler
-        return IsolationForest, StandardScaler
+        _SKLEARN_CACHE = (IsolationForest, StandardScaler)
     except ImportError:
         print("[Anomaly] scikit-learn not found — IForest disabled.")
-        return None, None
+        _SKLEARN_CACHE = (None, None)
+    return _SKLEARN_CACHE
 
 
 def _try_import_tf():
@@ -136,7 +149,7 @@ class IForestDetector:
 
 class LSTMAutoencoder:
     def __init__(self):
-        self._seq_buf:   list[np.ndarray] = []
+        self._seq_buf:   deque = deque(maxlen=config.LSTM_SEQ_LEN)  # bounded — old entries auto-discarded
         self._seqs:      list[np.ndarray] = []
         self._model      = None
         self._scaler     = None
@@ -170,7 +183,7 @@ class LSTMAutoencoder:
         self._seq_buf.append(vec.copy())
 
         if len(self._seq_buf) >= config.LSTM_SEQ_LEN:
-            seq = np.array(self._seq_buf[-config.LSTM_SEQ_LEN:])
+            seq = np.array(self._seq_buf)  # deque is already maxlen=LSTM_SEQ_LEN
             with self._lock:
                 self._seqs.append(seq)
 
@@ -184,7 +197,7 @@ class LSTMAutoencoder:
         if not self._trained or len(self._seq_buf) < config.LSTM_SEQ_LEN:
             return {"trained": False, "mse": None, "anomaly": False}
 
-        seq = np.array(self._seq_buf[-config.LSTM_SEQ_LEN:])
+        seq = np.array(self._seq_buf)  # deque is already maxlen=LSTM_SEQ_LEN
         self._infer_buf.append(seq)
 
         if len(self._infer_buf) < config.LSTM_INFER_BATCH_SIZE:

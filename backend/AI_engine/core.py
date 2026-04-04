@@ -47,15 +47,12 @@ class AlertHook:
         with self._lock:
             self._fn = fn
 
-    def fire(self, source: str = "", event_type: str = "", severity: int = 1, record: dict = None):
+    def fire(self, source: str = "", event_type: str = "", severity: int = 1):
         with self._lock:
             fn = self._fn
         if fn:
             try:
-                try:
-                    fn(source, event_type, severity, record)
-                except TypeError:
-                    fn(source, event_type, severity)
+                fn(source, event_type, severity)
             except Exception as e:
                 print(f"  [AlertHook] Handler error: {e}")
 
@@ -215,5 +212,5 @@ class EventLogger:
 
         print(f"  [ALERT][{source.upper()}] {event_type}  "
               f"{details.split(' | ')[0]}")
-        self._alert_hook.fire(source, event_type, severity, record=record)
+        self._alert_hook.fire(source, event_type, severity)
         return snap

@@ -515,6 +515,10 @@ def run(student_name: str = "Student", resume_session_id: str = None):
             if lip.get("lip_moving"):   _active.append("LIP")
             if glow.get("glow_detected"): _active.append("GLOW")
         if det.person_count > 1:        _active.append("YOLO_MULTI")
+        # P7 fix: include per-item YOLO detections so dataset frames with
+        # phone/book are labelled alert_yolo_phone / alert_yolo_book instead of normal
+        for _item in set(det.items):
+            _active.append(f"YOLO_{_item.upper().replace(' ', '_')}")
         if if_res.get("anomaly"):       _active.append("ANOMALY")
         if lstm_res.get("anomaly"):     _active.append("ANOMALY")
 

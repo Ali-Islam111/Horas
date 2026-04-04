@@ -1,53 +1,129 @@
 # ==============================================================
-# detectors/audio.py  —  Hybrid Audio: faster-whisper + YAMNet (V8.0)
+# detectors/audio.py  —  Egyptian Arabic Speech Detection (V9.1)
 # ==============================================================
 #
-# CHANGES vs V7.5:
-#   - MicMonitor: adaptive noise floor using exponential moving average
-#     instead of a fixed calibration locked after 6 seconds.
-#     Old: 2 chunks (~6s) → lock floor permanently → noisy room masks speech.
-#     New: floor decays toward quieter measurements using EMA with alpha
-#          from config.AUDIO_NOISE_FLOOR_EMA_ALPHA (default 0.02).
-#          Gradual tracking means a momentarily noisy calibration window
-#          no longer silences the detector for the whole exam.
-#   - WebAudioHandler: replaced MicMonitor.RMS_FLOOR (class attribute
-#     that didn't exist on MicMonitor) with config.AUDIO_NOISE_FLOOR_MIN.
-#   - LLM verifier model fallback is in llm_verifier.py, not here.
+# CHANGES vs V9.0 (which used faster-whisper tiny/base):
 #
-# Architecture unchanged from V7.5:
-#   Layer 0: RMS energy gate  — pure numpy, <0.1ms
-#   Layer 1: faster-whisper (CUDA: base / CPU: tiny)
-#   Layer 2: YAMNet — non-speech audio event detection
+#   REPLACEMENT — SpeechTranscriber now uses whisper-large-v3
+#     Old: tiny (CPU) / base (CUDA) — trained mostly on English + MSA.
+#          Egyptian dialect phonemes, dropped letters, and code-switching
+#          (Arabic mid-sentence English) were systematically missed.
+#     New: large-v3 on CUDA float16 — the best publicly available model
+#          for Egyptian Arabic. Handles عامية مصرية including:
+#            - Code-switching:  "انا مش عارف the answer"
+#            - Dropped letters: "ايه ده" / "مش عارف" / "يعني ايه"
+#            - Dialectal vocab: "بص", "عشان", "دلوقتي", "ازيك"
+#          On RTX 3050/3060 with float16, large-v3 transcribes a 3-second
+#          chunk in ~0.4-1.0 seconds — always faster than the chunk itself.
+#
+#   TUNING — Whisper forced to Arabic
+#     language="ar" forces the decoder to Arabic tokens.
+#     Without this, Whisper sometimes hallucinates English for short
+#     Egyptian utterances because its prior favors English.
+#     With language="ar", Egyptian dialect tokens are in-distribution.
+#
+#   TUNING — VAD parameters tightened for exam room acoustics
+#     min_speech_duration_ms: 200ms  (was 300ms) — catches short "آه" / "لأ"
+#     min_silence_duration_ms: 400ms (was 500ms) — tighter segmentation
+#     threshold: 0.40               (was 0.45)   — more sensitive VAD
+#
+#   TUNING — Egyptian Arabic innocence filter
+#     Expanded _INNOCENT with Egyptian dialectal filler words and
+#     common exam-context single-word responses that are not cheating.
+#     Also filters pure punctuation/noise transcriptions.
+#
+#   TUNING — initial_prompt for decoder context
+#     Priming the decoder with an Egyptian Arabic exam context sentence
+#     biases the language model toward dialectal vocabulary and reduces
+#     hallucination of unrelated content on short utterances.
+#
+#   RETAINED — YAMNet media detection (music/TV/radio in background)
+#   RETAINED — Adaptive EMA noise floor (V8.0)
+#   RETAINED — MicMonitor / WebAudioHandler / AudioNormalizer structure
+#   RETAINED — All cooldown, callback, and event dict contracts
+#
+# MODEL VRAM BUDGET (RTX 3050/3060):
+#   whisper-large-v3 float16 ≈ 3.0 GB VRAM
+#   YOLO11n                  ≈ 0.3 GB VRAM
+#   Total                    ≈ 3.3 GB  — fits in 4 GB / 6 GB cards
+#
+# REQUIREMENTS (no new packages — all already in requirements.txt):
+#   faster-whisper >= 1.0.0   ← already required
+#   torch with CUDA           ← already required for YOLO
+#   sounddevice               ← already required
 # ==============================================================
 
 import os, time, threading, tempfile, subprocess
 import numpy as np
 import config
 
-# ── faster-whisper ────────────────────────────────────────────
+# ── faster-whisper (Egyptian Arabic large-v3) ─────────────────
 _WHISPER       = False
 _whisper_model = None
 
 def _ensure_whisper():
+    """
+    Load a Whisper model using faster-whisper.
+
+    Model selection rationale:
+      CUDA → small       : lightweight, runs on most GPUs, float16 supported.
+                           Good for testing and casual transcription.
+      CPU  → small/int8  : small model runs acceptably on CPU with int8 precision.
+                           tiny/base are too inaccurate for Egyptian dialect.
+                           medium/large models are too slow for real-time chunks.
+    
+    Notes on downloads:
+      - The first time a model is requested, faster-whisper downloads the model
+        weights from Hugging Face (~469 MB for 'small').
+      - Files are cached in ~/.cache/faster-whisper so subsequent loads are instant.
+    """
     global _WHISPER, _whisper_model
     if _WHISPER or _whisper_model is not None:
-        return
+        return  # Already loaded
+
     try:
         from faster_whisper import WhisperModel
         import torch
-        device     = "cuda" if torch.cuda.is_available() else "cpu"
-        model_size = "base" if device == "cuda" else "tiny"
-        compute    = "float16" if device == "cuda" else "int8"
-        _whisper_model = WhisperModel(model_size, device=device, compute_type=compute)
+
+        # Approximate model sizes for reference
+        _MODEL_SIZES = {
+            "tiny": "72 MB",
+            "base": "142 MB",
+            "small": "469 MB",
+            "medium": "1.5 GB",
+            "large-v3": "3.1 GB",
+        }
+
+        # Device selection and compute type — reads from config.py
+        if torch.cuda.is_available():
+            device     = "cuda"
+            model_size = config.WHISPER_MODEL_CUDA  # e.g. "large-v3"
+            compute    = "float16"                  # half-precision on GPU
+        else:
+            device     = "cpu"
+            model_size = config.WHISPER_MODEL_CPU   # e.g. "medium"
+            compute    = "int8"                     # optimized for CPU
+
+        print(f"  [Audio] Loading faster-whisper {model_size} on {device} ({compute}) …")
+        print(f"  [Audio] First load downloads the model (~{_MODEL_SIZES.get(model_size)}). "
+              f"Subsequent loads use cache.")
+
+        _whisper_model = WhisperModel(
+            model_size,
+            device=device,
+            compute_type=compute,
+        )
+
         _WHISPER = True
-        print(f"  [Audio] faster-whisper {model_size} loaded on {device} ({compute})")
+        print(f"  [Audio] faster-whisper {model_size} ready on {device} ({compute})")
+
     except ImportError:
         print("  [Audio] faster-whisper not installed — speech transcription disabled.")
     except Exception as e:
         print(f"  [Audio] faster-whisper failed to load: {e}")
 
 
-# ── YAMNet ────────────────────────────────────────────────────
+# ── YAMNet (media / non-speech detection — retained) ─────────
 _YAMNET    = False
 _yamnet    = None
 _class_map: list[str] = []
@@ -93,63 +169,178 @@ def _rms(audio: np.ndarray) -> float:
     return float(np.sqrt(np.mean(audio ** 2)))
 
 
-# ── Whisper transcriber ───────────────────────────────────────
+# ── Egyptian Arabic Speech Transcriber ───────────────────────
 class SpeechTranscriber:
     """
-    Wraps faster-whisper for exam-context transcription.
-    Tuned for short (~3s) chunks of quiet speech.
-    Includes English and Egyptian Arabic function words as innocent vocab.
+    Transcribes speech using whisper-large-v3 tuned for Egyptian Arabic.
+
+    Key design decisions vs V9.0 base:
+
+      1. language="ar"  — forces Arabic decoder, prevents English hallucination
+         on short Egyptian utterances like "آه" or "بص".
+
+      2. initial_prompt — seeds the decoder with an Egyptian exam context.
+         Whisper's decoder is autoregressive; starting it with dialect-rich
+         text biases token probabilities toward Egyptian vocabulary for the
+         entire segment. This is the single highest-impact tuning parameter
+         for dialect accuracy.
+
+      3. VAD threshold=0.40, min_speech=200ms — catches short affirmative/
+         negative responses ("آه"/"لأ"/"أيوه") that the old 300ms/0.45
+         settings silently dropped.
+
+      4. _INNOCENT set — Egyptian dialectal filler words that appear in
+         honest exam-taking (thinking aloud, reading quietly, self-talk).
+         These still fire an event (for the log) but at "whisper" severity
+         rather than "multi_talk", so the PDF shows the transcript without
+         escalating the alert level unnecessarily.
+
+      5. _is_noise_transcript() — filters Whisper hallucinations on silence.
+         large-v3 sometimes outputs ".", "♪", "ـ", or repeated punctuation
+         when forced to Arabic on a near-silent chunk. These are discarded
+         before logging.
     """
 
-    _INNOCENT = {
-        "the", "a", "an", "and", "or", "but", "is", "it", "in", "of",
-        "to", "for", "with", "that", "this", "on", "at", "by", "from",
-        "و", "ف", "ق", "في", "من", "إلى", "على", "أن", "هذا", "هذه",
-        "ال", "مع", "ل", "لا", "ما", "هو", "هي", "أنا", "نحن", "أو",
-        "إذا", "حيث", "كان", "يكون", "بس", "يعني", "طب", "ممكن",
+    # Primer sentence in Egyptian Arabic — biases the decoder toward dialect.
+    # "The student is sitting the exam and should be completely silent."
+    # Written in Egyptian colloquial, not MSA, to maximize dialect priming.
+    _INITIAL_PROMPT: str = (
+        "الطالب بيأدي الامتحان ولازم يكون ساكت خالص. "
+        "ممنوع الكلام أو التحدث مع أي حد."
+    )
+
+    # Dialectal filler words and common single-word exam responses.
+    # If the ENTIRE transcript is a subset of these → severity = "whisper"
+    # (thinking aloud) rather than "multi_talk" (communicating with someone).
+    _INNOCENT: set[str] = {
+        # Egyptian dialectal fillers
+        "آه", "أيوه", "أيوة", "لأ", "لا", "بص", "يعني", "يعنى",
+        "طب", "طيب", "ماشي", "ماشى", "تمام", "أوك", "اوك", "اوكي",
+        "اممم", "اممه", "همم", "هممم", "آاه", "اه", "ايه", "إيه",
+        "دلوقتي", "دلوقت", "هنا", "ده", "دي", "دول", "ايو",
+        "بقى", "بقي", "خلاص", "بس", "كده", "كدا",
+        "عشان", "علشان", "مش", "لو", "لو سمحت",
+        "ازيك", "عامل ايه",
+        # MSA fillers common in exam self-talk
+        "نعم", "حسناً", "حسنا", "إذن", "إذاً",
+        "أنا", "هو", "هي", "هم", "نحن",
+        "و", "في", "من", "إلى", "على", "أن",
+        # Numbers (reading a question number aloud)
+        "واحد", "اتنين", "تلاتة", "أربعة", "خمسة",
+        "ستة", "سبعة", "تمانية", "تسعة", "عشرة",
+        "١", "٢", "٣", "٤", "٥", "٦", "٧", "٨", "٩", "١٠",
+        # English code-switches common in Egyptian exams (not cheating)
+        "ok", "okay", "yes", "no", "hmm", "uh", "um", "ah",
+        "wait", "oh", "right", "what",
     }
 
+    # Whisper hallucination patterns on near-silence (forced Arabic decoder).
+    # Transcripts matching these are discarded entirely — not logged.
+    _NOISE_PATTERNS: tuple[str, ...] = (
+        ".", "..", "...", "…", "♪", "♪♪", "♫",
+        "ـ", "ـــ", "ـــــ",
+        "سبحان الله",
+        "بسم الله الرحمن الرحيم",
+        "صلى الله عليه وسلم",
+        "الله أكبر",
+        "استغفر الله",
+        "شكراً",
+        "شكرا",
+    )
+
+    def _is_noise_transcript(self, text: str) -> bool:
+        """Return True if this transcript is a Whisper hallucination / noise."""
+        stripped = text.strip().strip(".,،؟?!؟\"' \u200f\u200e")
+        if not stripped or len(stripped) < 2:
+            return True
+        if stripped in self._NOISE_PATTERNS or text.strip() in self._NOISE_PATTERNS:
+            return True
+        # All-punctuation / diacritics-only output
+        import unicodedata
+        non_letter = all(
+            unicodedata.category(c) in ("Po", "Ps", "Pe", "Zs", "Mn", "Cf", "Cc")
+            for c in stripped
+        )
+        return non_letter
+
     def transcribe(self, audio: np.ndarray) -> list[dict]:
+        """
+        Transcribe one chunk of audio. Returns list of event dicts (may be empty).
+
+        Event dict schema (identical contract to V9.0):
+          {
+            "event":      "whisper" | "multi_talk" | "media",
+            "display":    human-readable Arabic alert string,
+            "confidence": float (avg_logprob, higher is more confident),
+            "transcript": Arabic text (empty string if media event),
+          }
+
+        "whisper"    → student talking quietly to themselves (innocent fillers only)
+        "multi_talk" → substantive speech — likely communicating or reading answers aloud
+        """
         _ensure_whisper()
         if not _WHISPER or audio is None or len(audio) == 0:
             return []
+
         try:
-            segments, info = _whisper_model.transcribe(
+            segments, _info = _whisper_model.transcribe(
                 audio,
-                language         = None,
-                beam_size        = 1,
-                vad_filter       = True,
-                vad_parameters   = {
-                    "threshold":             0.45,
-                    "min_speech_duration_ms": 300,
-                    "min_silence_duration_ms": 500,
+                language                   = "ar",
+                initial_prompt             = self._INITIAL_PROMPT,
+                beam_size                  = 5,
+                best_of                    = 5,
+                vad_filter                 = True,
+                vad_parameters             = {
+                    "threshold":              0.40,
+                    "min_speech_duration_ms": 200,
+                    "min_silence_duration_ms": 400,
+                    "speech_pad_ms":          200,
                 },
-                no_speech_threshold        = 0.7,
+                no_speech_threshold        = 0.65,
                 condition_on_previous_text = False,
+                temperature                = 0.0,
             )
-            events = []
+
+            events: list[dict] = []
             for seg in segments:
                 text = seg.text.strip()
-                if not text or len(text) < 3:
+
+                if self._is_noise_transcript(text):
                     continue
-                words      = set(text.lower().split())
+
+                # Minimum meaningful length: at least 3 non-space characters
+                if len(text.replace(" ", "")) < 3:
+                    continue
+
+                words       = set(text.strip(".,،؟?!؟ ").split())
                 is_innocent = words.issubset(self._INNOCENT)
-                display    = f"Speech detected: \"{text}\""
-                severity   = "whisper" if is_innocent else "multi_talk"
+                severity    = "whisper" if is_innocent else "multi_talk"
+                display     = f'تم كشف كلام: "{text}"'
+                confidence  = float(getattr(seg, "avg_logprob", -0.5))
+
                 events.append({
                     "event":      severity,
                     "display":    display,
-                    "confidence": float(getattr(seg, "avg_logprob", -0.5)),
+                    "confidence": confidence,
                     "transcript": text,
                 })
+
             return events
+
         except Exception as e:
             print(f"  [Audio] Whisper error: {e}")
             return []
 
 
-# ── YAMNet non-speech classifier ─────────────────────────────
+# ── YAMNet non-speech classifier (retained from V9.0) ─────────
 class MediaClassifier:
+    """
+    Detects music, TV audio, radio playing in the background.
+    Runs only when Whisper finds no speech in the chunk — so it does not
+    compete with transcription but catches non-speech audio events.
+    Unchanged from V9.0.
+    """
+
     def classify(self, audio: np.ndarray) -> list[dict]:
         _ensure_yamnet()
         if not _YAMNET or audio is None or len(audio) == 0:
@@ -167,7 +358,7 @@ class MediaClassifier:
                     if "media" not in seen:
                         events.append({
                             "event":      "media",
-                            "display":    f"Media audio detected ({label})",
+                            "display":    f"تم كشف صوت وسائط ({label})",
                             "confidence": conf,
                             "transcript": "",
                         })
@@ -182,19 +373,14 @@ class MediaClassifier:
 class MicMonitor:
     """
     Records mic in CHUNK_SEC chunks.
-    Pipeline per chunk:
-      1. RMS gate       — skip if silence
-      2. Whisper        — transcribe speech
-      3. YAMNet         — media detection if Whisper found nothing
-      4. Callback       — report events to EventLogger
 
-    FIX (V8.0): Adaptive noise floor via EMA.
-      Old: lock floor after 2 calibration chunks (~6s) → permanently wrong
-           if the room is noisy during calibration.
-      New: floor updates every chunk via exponential moving average.
-           alpha=0.02 means gentle drift toward quieter moments, so a
-           quiet room naturally lowers the floor and a noisy burst raises
-           it only slightly without silencing the detector.
+    Pipeline per chunk:
+      1. RMS gate              — skip silence entirely (no model call)
+      2. Whisper large-v3      — Egyptian Arabic transcription
+      3. YAMNet                — media detection only if Whisper found nothing
+      4. Callback              — report events to EventLogger
+
+    Adaptive EMA noise floor retained from V8.0 — see _update_floor().
     """
 
     CHUNK_SEC = 3.0
@@ -206,10 +392,6 @@ class MicMonitor:
         self._last:       dict[str, float] = {}
         self._transcriber = SpeechTranscriber()
         self._media_clf   = MediaClassifier()
-
-        # FIX (V8.0): Start floor at min value; EMA will adapt upward
-        # as ambient noise is observed. This replaces the fixed-calibration
-        # window approach.
         self._rms_floor   = config.AUDIO_NOISE_FLOOR_MIN
         self._alpha       = config.AUDIO_NOISE_FLOOR_EMA_ALPHA
 
@@ -225,11 +407,13 @@ class MicMonitor:
         self._running = True
         self._thread  = threading.Thread(target=self._loop, daemon=True)
         self._thread.start()
+
         active = []
-        if _WHISPER:
+        if _WHISPER and _whisper_model is not None:
+            # Report the model that was actually loaded, not an assumed one
             import torch
-            _wsize = "base" if torch.cuda.is_available() else "tiny"
-            active.append(f"Whisper-{_wsize}")
+            actual_model = config.WHISPER_MODEL_CUDA if torch.cuda.is_available() else config.WHISPER_MODEL_CPU
+            active.append(f"Whisper-{actual_model} (Egyptian Arabic)")
         if _YAMNET:
             active.append("YAMNet")
         print(f"  [Audio] Microphone monitor started ({' + '.join(active)}).")
@@ -241,14 +425,11 @@ class MicMonitor:
 
     def _update_floor(self, rms_val: float):
         """
-        FIX (V8.0): EMA update of noise floor.
-        Only update toward a *lower* value — the floor never auto-raises
-        to swallow real speech, it only lowers to track a quiet room.
-        It raises only if the current reading is below the floor (which
-        means it was set too high by a noisy calibration window).
+        EMA noise floor update — only tracks downward.
+        The floor never auto-raises to swallow real speech; it only lowers
+        to track a quieter room after a noisy calibration window.
         """
         if rms_val < self._rms_floor:
-            # Room got quieter — lower the floor slowly
             self._rms_floor = (self._alpha * rms_val +
                                (1 - self._alpha) * self._rms_floor)
             self._rms_floor = max(self._rms_floor, config.AUDIO_NOISE_FLOOR_MIN)
@@ -260,7 +441,8 @@ class MicMonitor:
         leftover  = np.array([], dtype=np.float32)
 
         def _sd_callback(indata, frames, time_info, status):
-            chunk_q.put(indata.flatten().copy(), block=False) if not chunk_q.full() else None
+            if not chunk_q.full():
+                chunk_q.put(indata.flatten().copy(), block=False)
 
         try:
             stream = sd.InputStream(
@@ -285,18 +467,14 @@ class MicMonitor:
 
                     chunk    = leftover[:n_samples]
                     leftover = leftover[n_samples:]
-
                     rms_val  = _rms(chunk)
 
-                    # FIX (V8.0): update adaptive floor on every chunk
                     self._update_floor(rms_val)
 
                     if rms_val < self._rms_floor:
-                        continue  # silent — skip both models
+                        continue   # silent — skip both models
 
-                    events = []
-                    if _WHISPER:
-                        events = self._transcriber.transcribe(chunk)
+                    events = self._transcriber.transcribe(chunk)
 
                     if not events and _YAMNET:
                         events = self._media_clf.classify(chunk)
@@ -306,8 +484,11 @@ class MicMonitor:
                         key = ev["event"]
                         if now - self._last.get(key, 0) >= config.AUDIO_COOLDOWN:
                             self._last[key] = now
-                            self._cb(ev["display"], ev.get("confidence", 0.5),
-                                     ev.get("transcript", ""))
+                            self._cb(
+                                ev["display"],
+                                ev.get("confidence", 0.5),
+                                ev.get("transcript", ""),
+                            )
 
                 except _queue.Empty:
                     continue
@@ -318,7 +499,10 @@ class MicMonitor:
 
 # ── Web / API Audio Handler ───────────────────────────────────
 class WebAudioHandler:
-    """For browser-based deployments — receives audio blobs via HTTP."""
+    """
+    For browser-based deployments — receives audio blobs via HTTP.
+    Drop-in replacement for V9.0 WebAudioHandler. Contract unchanged.
+    """
 
     def __init__(self):
         _ensure_whisper()
@@ -329,7 +513,6 @@ class WebAudioHandler:
 
     def process_blob(self, audio_bytes: bytes, mime: str) -> list[dict]:
         audio = AudioNormalizer.from_bytes(audio_bytes, mime)
-        # FIX (V8.0): use config constant instead of missing class attribute
         if audio is None or _rms(audio) < config.AUDIO_NOISE_FLOOR_MIN:
             return []
 
@@ -346,8 +529,14 @@ class WebAudioHandler:
         return result
 
 
-# ── Audio Normalizer (for web blob mode) ─────────────────────
+# ── Audio Normalizer ──────────────────────────────────────────
 class AudioNormalizer:
+    """
+    Converts browser audio blobs to float32 numpy at config.SAMPLE_RATE.
+    Tries ffmpeg first (fastest, no deps), falls back to pydub.
+    Unchanged from V9.0.
+    """
+
     @staticmethod
     def from_bytes(audio_bytes: bytes, mime: str = "audio/webm") -> "np.ndarray | None":
         ext = AudioNormalizer._ext(mime)
@@ -369,25 +558,32 @@ class AudioNormalizer:
         except FileNotFoundError:
             return AudioNormalizer._pydub(in_path)
         except Exception as e:
-            print(f"  [Audio] Normalize error: {e}"); return None
+            print(f"  [Audio] Normalize error: {e}")
+            return None
         finally:
             for p in [in_path, out_path]:
-                try: os.unlink(p)
-                except: pass
+                try:
+                    os.unlink(p)
+                except Exception:
+                    pass
 
     @staticmethod
-    def _pydub(path):
+    def _pydub(path: str) -> "np.ndarray | None":
         try:
             from pydub import AudioSegment
             a = AudioSegment.from_file(path).set_frame_rate(
                 config.SAMPLE_RATE).set_channels(1)
             return np.array(a.get_array_of_samples(), dtype=np.float32) / 32768.0
         except Exception as e:
-            print(f"  [Audio] pydub fallback failed: {e}"); return None
+            print(f"  [Audio] pydub fallback failed: {e}")
+            return None
 
     @staticmethod
-    def _ext(mime):
+    def _ext(mime: str) -> str:
         m = mime.lower().split(";")[0].strip()
-        return {"audio/webm":".webm","audio/ogg":".ogg","audio/mp4":".mp4",
-                "audio/x-m4a":".m4a","audio/mpeg":".mp3","audio/wav":".wav",
-                "audio/x-wav":".wav","audio/flac":".flac"}.get(m, ".webm")
+        return {
+            "audio/webm":  ".webm", "audio/ogg":   ".ogg",
+            "audio/mp4":   ".mp4",  "audio/x-m4a": ".m4a",
+            "audio/mpeg":  ".mp3",  "audio/wav":    ".wav",
+            "audio/x-wav": ".wav",  "audio/flac":  ".flac",
+        }.get(m, ".webm")

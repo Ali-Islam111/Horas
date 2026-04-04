@@ -41,9 +41,66 @@ try:
     )
     from reportlab.lib.enums         import TA_CENTER, TA_RIGHT, TA_LEFT
     from reportlab.pdfgen            import canvas as rl_canvas
+    from reportlab.pdfbase           import pdfmetrics
+    from reportlab.pdfbase.ttfonts   import TTFont
     _RL = True
+    _ARABIC_FONT = 'Helvetica'  # Default fallback — overwritten if an Arabic font is found
+
+    # Register a Unicode/Arabic-capable font.
+    # Priority: Tahoma (guaranteed on all Windows since XP, excellent Arabic coverage)
+    # → Segoe UI → Arial → DejaVu (Linux/macOS fallbacks).
+    try:
+        import platform
+        if platform.system() == "Windows":
+            font_options = [
+                ("C:\\Windows\\Fonts\\tahoma.ttf",   "Tahoma"),    # best Arabic coverage on Windows
+                ("C:\\Windows\\Fonts\\segoeui.ttf",  "SegoeUI"),
+                ("C:\\Windows\\Fonts\\arial.ttf",    "Arial"),
+            ]
+        elif platform.system() == "Darwin":
+            font_options = [
+                ("/Library/Fonts/Tahoma.ttf",                                       "Tahoma"),
+                ("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",                 "DejaVuSans"),
+            ]
+        else:  # Linux
+            font_options = [
+                ("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",                 "DejaVuSans"),
+                ("/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf", "LiberationSans"),
+            ]
+
+        for font_path, font_name in font_options:
+            if os.path.exists(font_path):
+                try:
+                    pdfmetrics.registerFont(TTFont(font_name, font_path))
+                    _ARABIC_FONT = font_name
+                    print(f"[Report] Registered '{font_name}' for Arabic/Unicode support")
+                    break
+                except Exception as e:
+                    print(f"[Report] Could not register '{font_name}': {e}")
+        else:
+            print("[Report] No Arabic font found — falling back to Helvetica. "
+                  "Arabic text may not render correctly.")
+    except Exception as e:
+        print(f"[Report] Font registration error: {e}")
+
+# ── Arabic text preparation (reshape + BiDi) ──────────────────
+# arabic_reshaper converts Arabic letters to their correct contextual forms
+# (isolated / initial / medial / final).  python-bidi then applies the Unicode
+# Bidirectional Algorithm so ReportLab renders the glyphs in the correct
+# right-to-left visual order.  Without both steps, Arabic appears as reversed,
+# unconnected characters.
+_ARABIC_RESHAPER_AVAILABLE = False
+try:
+    import arabic_reshaper
+    from bidi.algorithm import get_display as _bidi_display
+    _ARABIC_RESHAPER_AVAILABLE = True
+except ImportError:
+    pass  # Graceful degradation — Arabic text will still appear, just unshaped
+        
 except ImportError:
     _RL = False
+    _ARABIC_FONT = 'Helvetica'
+    _ARABIC_RESHAPER_AVAILABLE = False
     print("[Report] reportlab not installed — PDF generation disabled.")
 
 
@@ -55,6 +112,35 @@ def _hex(h: str):
 
 _C = {k: _hex(v) for k, v in config.REPORT_COLORS.items()} if _RL else {}
 _CAT_C = {k: _hex(v) for k, v in config.CATEGORY_COLORS.items()} if _RL else {}
+
+
+# ── Arabic text preparation ───────────────────────────────────
+def _prepare_arabic(text: str) -> str:
+    """
+    Prepare Arabic text for correct rendering in ReportLab.
+
+    ReportLab renders glyphs strictly left-to-right and performs no Unicode
+    shaping.  For Arabic to appear correctly two transformations are required:
+
+      1. arabic_reshaper.reshape() — selects the correct contextual glyph form
+         for each letter (isolated / initial / medial / final).
+      2. bidi.algorithm.get_display() — applies the Unicode BiDi algorithm so
+         the visual character order is right-to-left as Arabic readers expect.
+
+    If the libraries are not installed the text is returned unchanged; it will
+    still appear in the PDF but letters will be in isolated form and reversed.
+    Non-Arabic text passes through unchanged.
+    """
+    if not _ARABIC_RESHAPER_AVAILABLE:
+        return text
+    has_arabic = any('\u0600' <= c <= '\u06FF' for c in text)
+    if not has_arabic:
+        return text
+    try:
+        reshaped = arabic_reshaper.reshape(text)
+        return _bidi_display(reshaped)
+    except Exception:
+        return text  # never crash the report over a display issue
 
 
 # ── Transcript extractor ─────────────────────────────────────
@@ -196,14 +282,15 @@ def generate(
                        textColor=_C["primary"], spaceBefore=14, spaceAfter=6)
     st_h3         = S("h3", fontSize=11, fontName="Helvetica-Bold",
                        textColor=_C["primary"], spaceBefore=8, spaceAfter=4)
-    st_body       = S("b",  fontSize=9,  leading=13, textColor=_C["primary"])
-    st_mono       = S("m",  fontSize=8,  fontName="Courier",
+    # Apply Arabic-supporting font to body text for transcripts and details
+    st_body       = S("b",  fontSize=9, fontName=_ARABIC_FONT, leading=13, textColor=_C["primary"])
+    st_mono       = S("m",  fontSize=8,  fontName=_ARABIC_FONT,
                        leading=11, textColor=_C["primary"])
     st_caption    = S("c",  fontSize=8,  textColor=_C["muted"],
                        alignment=TA_CENTER, spaceBefore=2, spaceAfter=8)
     st_center     = S("cc", fontSize=9,  alignment=TA_CENTER)
-    # NEW: transcript highlight style
-    st_transcript = S("tr", fontSize=9, fontName="Helvetica-Oblique",
+    # Transcript highlight style — uses Unicode-capable font for Arabic
+    st_transcript = S("tr", fontSize=9, fontName=_ARABIC_FONT,
                        textColor=_hex(config.REPORT_COLORS["accent2"]),
                        leftIndent=10, spaceBefore=2, spaceAfter=4,
                        leading=13)
@@ -519,17 +606,19 @@ def generate(
 
         header_data = [[
             Paragraph(f"<b>#{i:03d}</b>", st_body),
-            Paragraph(f"<b>{src}</b>", ParagraphStyle(
-                "hd", fontSize=8, fontName="Helvetica-Bold",
-                textColor=cat_color)),
-            Paragraph(etype, st_body),
+            Paragraph(f"<b>{_prepare_arabic(src)}</b>", ParagraphStyle(
+                "hd", fontSize=8, fontName=_ARABIC_FONT,
+                textColor=cat_color, fontStyle="bold")),
+            Paragraph(_prepare_arabic(etype), ParagraphStyle(
+                "et", fontSize=8, fontName=_ARABIC_FONT,
+                textColor=_C["primary"])),
             Paragraph(ts, ParagraphStyle(
-                "ts", fontSize=8, textColor=_C["muted"],
+                "ts", fontSize=8, fontName=_ARABIC_FONT, textColor=_C["muted"],
                 alignment=TA_RIGHT)),
             Paragraph(
                 {1:"LOW",2:"HIGH",3:"CRIT",4:"CRIT",5:"CRIT"}.get(sev,"—"),
-                ParagraphStyle("sv", fontSize=8, fontName="Helvetica-Bold",
-                               textColor=sev_color, alignment=TA_RIGHT)),
+                ParagraphStyle("sv", fontSize=8, fontName=_ARABIC_FONT,
+                               textColor=sev_color, alignment=TA_RIGHT, fontStyle="bold")),
         ]]
         hdr_tbl = Table(header_data,
                         colWidths=[1.0*cm, 2.4*cm, 7.2*cm, 4.0*cm, 1.4*cm])
@@ -544,16 +633,22 @@ def generate(
 
         # Details line (confidence etc.)
         if det:
-            block.append(Paragraph(f"<i>{det}</i>",
-                ParagraphStyle("det", fontSize=8, textColor=_C["muted"],
+            det_wrapped = _prepare_arabic(det)
+            block.append(Paragraph(f"<i>{det_wrapped}</i>",
+                ParagraphStyle("det", fontSize=8, fontName=_ARABIC_FONT, textColor=_C["muted"],
                                leftIndent=8, spaceBefore=2, spaceAfter=2)))
 
         # Transcript line — highlighted, only for AUDIO events
         if transcript:
-            transcript_safe = transcript.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+            transcript_wrapped = _prepare_arabic(transcript)
+            # st_transcript already specifies _ARABIC_FONT; no extra <font> tag needed
+            transcript_para = Paragraph(
+                f'\U0001f3a4  "{transcript_wrapped}"',
+                st_transcript
+            )
             block.append(
                 Table(
-                    [[Paragraph(f'🎤  "{transcript_safe}"', st_transcript)]],
+                    [[transcript_para]],
                     colWidths=[W - 36*mm],
                 )
             )
