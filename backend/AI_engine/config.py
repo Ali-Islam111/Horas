@@ -107,7 +107,7 @@ ID_CHECK_EVERY = 60
 YOLO_MODEL_PROCTOR = os.path.join(MODELS_DIR, "yolo_proctoring.pt")
 YOLO_CONFS_PROCTOR = {
     "Book":         0.60,
-    "Mobile_phone": 0.75,
+    "Mobile_phone": 0.80,
     "Earphone":     0.60,
     "headset":      0.60,
     "smart_watch":  0.60,
@@ -172,7 +172,7 @@ AUDIO_MIME_PRIORITY = [
 # WHISPER_MIN_SPEECH_MS:
 #   200ms catches single-word responses. Old value was 300ms.
  
-WHISPER_MODEL_CUDA    = "large-v3"
+WHISPER_MODEL_CUDA    = "small"
 WHISPER_MODEL_CPU     = "medium"
 WHISPER_LANGUAGE      = "ar"
 WHISPER_BEAM_SIZE     = 5
