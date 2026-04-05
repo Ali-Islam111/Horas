@@ -149,6 +149,8 @@ class ProctoringSession:
         # FIX E (V9.0): 12-char ID — 281 trillion combinations vs 4 billion
         self.session_id   = (session_id or uuid.uuid4().hex[:12]).upper()
         self._on_alert    = on_alert
+        self._on_ready    = on_ready
+        self._on_failed   = on_failed
 
         self._start_time     = None
         self._end_time       = None
@@ -270,6 +272,8 @@ class ProctoringSession:
             import traceback; traceback.print_exc()
             self._thread_crashed = True
             self._state = "stopped"
+            if getattr(self, '_on_failed', None):
+                self._on_failed()
 
     def _run(self):
         # FIX 3: per-session AlertHook — no shared global
@@ -305,6 +309,8 @@ class ProctoringSession:
         if not _MP_OK:
             print(f"[Session {self.session_id}] MediaPipe unavailable — stopping.")
             self._state = "stopped"
+            if getattr(self, '_on_failed', None):
+                self._on_failed()
             return
 
         face_mesh = _mp_mesh.FaceMesh(
@@ -319,6 +325,8 @@ class ProctoringSession:
         enrolled    = self._do_enrollment(verifier, face_mesh, fh, fw)
         if not enrolled:
             print(f"[Session {self.session_id}] Enrollment failed — identity unverified.")
+            if getattr(self, '_on_failed', None):
+                self._on_failed()
 
         yolo.start()
         id_worker = _IdentityWorker(verifier)
@@ -415,6 +423,8 @@ class ProctoringSession:
             if self._state == "calibrating":
                 self._state = "active"
                 print(f"[Session {self.session_id}] Calibration done — proctoring active.")
+                if getattr(self, '_on_ready', None):
+                    self._on_ready()
 
             # ── Active proctoring ─────────────────────────────
             if run_mp and fres and fres.multi_face_landmarks:
@@ -632,9 +642,10 @@ class ProctoringSession:
             )
 
     def _make_alert_handler(self):
-        def _handle(source: str, event_type: str, severity: int):
-            with self._lock:
-                latest = self._events[-1] if self._events else {}
+        def _handle(source: str, event_type: str, severity: int, record: dict = None):
+            if record is None:
+                with self._lock:
+                    record = self._events[-1] if self._events else {}
             try:
                 self._on_alert({
                     "session_id":  self.session_id,
@@ -642,9 +653,9 @@ class ProctoringSession:
                     "source":      source,
                     "event_type":  event_type,
                     "severity":    severity,
-                    "timestamp":   latest.get("timestamp", ""),
-                    "details":     latest.get("details", ""),
-                    "screenshot":  latest.get("screenshot", ""),
+                    "timestamp":   record.get("timestamp", ""),
+                    "details":     record.get("details", ""),
+                    "screenshot":  record.get("screenshot", ""),
                 })
             except Exception as e:
                 print(f"[Session {self.session_id}] on_alert callback error: {e}")
