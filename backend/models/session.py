@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, Float, String, DateTime, ForeignKey, JSON
+from sqlalchemy import Column, Integer, Float, String, DateTime, ForeignKey, JSON, Index
 from sqlalchemy.orm import relationship
 from datetime import datetime, timezone
 from core.database import Base
@@ -19,7 +19,8 @@ class Session(Base):
 
     started_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     submitted_at = Column(DateTime, nullable=True)
-    ai_ready_at = Column(DateTime, nullable=True)  # NULL = AI never confirmed ready
+    ai_ready_at = Column(DateTime, nullable=True)   # NULL = AI never confirmed ready
+    report_path = Column(String, nullable=True)     # Absolute local path to the generated pdf report
 
     # Relationships: The "Many" side looking back at the "One" side.
     user = relationship("User", back_populates="sessions")
@@ -28,3 +29,9 @@ class Session(Base):
     # Relationship : the "one" side looking at the "Many" events.
     # # If a session is deleted, delete all of its cheating logs too.
     events = relationship("Event", back_populates="session", cascade="all, delete-orphan")
+
+    # Covers: filter by user_id + IS NOT NULL + ORDER BY submitted_at
+    # One index serves both new report-listing queries
+    __table_args__ = (
+        Index("ix_sessions_user_submitted", "user_id", "submitted_at"),
+    )

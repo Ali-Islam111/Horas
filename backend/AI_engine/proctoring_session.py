@@ -60,13 +60,7 @@ from detectors.audio             import MicMonitor
 from detectors.dataset_collector import DatasetCollector
 from reports.pdf_report          import generate
 
-try:
-    import mediapipe as mp
-    _mp_mesh = mp.solutions.face_mesh
-    _MP_OK   = True
-except ImportError:
-    _MP_OK = False
-    print("[Session] mediapipe not available.")
+
 
 # FIX A (V9.0): offline_trainer imported lazily inside the function that
 # needs it — not at module level. This removes the duplicate TF + sklearn
@@ -147,6 +141,8 @@ class ProctoringSession:
                  student_id:   str,
                  student_name: str      = "Student",
                  on_alert:     callable = None,
+                 on_ready:     callable = None,
+                 on_failed:    callable = None,
                  session_id:   str      = None):
         self.student_id   = student_id
         self.student_name = student_name
@@ -210,7 +206,8 @@ class ProctoringSession:
         """
         self._stop_event.set()
         if self._thread:
-            self._thread.join(timeout=10.0)
+            # changed to 60 so it won't trigger an edge case where the AI thread finishes after `pdf_path` is written as None in DB.
+            self._thread.join(timeout=60.0)             
         return self._build_result()
 
     def get_status(self) -> dict:
@@ -298,6 +295,13 @@ class ProctoringSession:
         lip_det   = LipMovementDetector()
 
         # FIX 2: per-session FaceMesh — no shared global lock
+        try:
+            import mediapipe as mp
+            _mp_mesh = mp.solutions.face_mesh
+            _MP_OK   = True
+        except ImportError:
+            _MP_OK = False
+
         if not _MP_OK:
             print(f"[Session {self.session_id}] MediaPipe unavailable — stopping.")
             self._state = "stopped"
