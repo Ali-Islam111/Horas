@@ -14,7 +14,7 @@ from datetime import datetime
 import config
 from core                      import EventLogger, AttentionScore, play_alert
 from detectors.head_pose       import HeadPoseDetector
-from detectors.face_signals    import GazeDetector, LipMovementDetector, GlowDetector
+from detectors.face_signals    import GazeDetector, LipMovementDetector
 from detectors.anomaly         import IForestDetector, LSTMAutoencoder, build_vector
 from detectors.object_detector import ObjectDetector
 from detectors.audio           import MicMonitor
@@ -221,7 +221,6 @@ def run(student_name: str = "Student", resume_session_id: str = None):
     head_det  = HeadPoseDetector(fw, fh)
     gaze_det  = GazeDetector()
     lip_det   = LipMovementDetector()
-    glow_det  = GlowDetector()
 
     enrolled = _enrollment(cap, verifier, config.ID_REF_FRAMES)
     if not enrolled:
@@ -411,17 +410,6 @@ def run(student_name: str = "Student", resume_session_id: str = None):
                         severity=config.SEV["lip_moving"],
                         attention=attn)
 
-            if frame_n % config.GLOW_EVERY == 0:
-                glow = glow_det.process(frame, face_bbox)
-            if glow["glow_detected"]:
-                is_alert = True
-                log.log("GLOW", "Screen/phone glow on face",
-                        details=f"glow_score={glow['glow_score']:.3f}",
-                        frame=frame,
-                        cooldown=config.COOLDOWN_GLOW,
-                        severity=config.SEV["glow"],
-                        attention=attn)
-
         else:
             face_bbox = None
             is_alert  = True
@@ -479,7 +467,7 @@ def run(student_name: str = "Student", resume_session_id: str = None):
                     severity=config.SEV["identity"],
                     attention=attn)
 
-        vec      = build_vector(head, gaze, lip, glow)
+        vec      = build_vector(head, gaze, lip)
         if_res   = iforest.update(vec)
         lstm_res = lstm.update(vec)
 
