@@ -83,20 +83,20 @@ try:
     except Exception as e:
         print(f"[Report] Font registration error: {e}")
 
-# ── Arabic text preparation (reshape + BiDi) ──────────────────
-# arabic_reshaper converts Arabic letters to their correct contextual forms
-# (isolated / initial / medial / final).  python-bidi then applies the Unicode
-# Bidirectional Algorithm so ReportLab renders the glyphs in the correct
-# right-to-left visual order.  Without both steps, Arabic appears as reversed,
-# unconnected characters.
-_ARABIC_RESHAPER_AVAILABLE = False
-try:
-    import arabic_reshaper
-    from bidi.algorithm import get_display as _bidi_display
-    _ARABIC_RESHAPER_AVAILABLE = True
-except ImportError:
-    pass  # Graceful degradation — Arabic text will still appear, just unshaped
-        
+    # ── Arabic text preparation (reshape + BiDi) ──────────────────
+    # arabic_reshaper converts Arabic letters to their correct contextual forms
+    # (isolated / initial / medial / final).  python-bidi then applies the Unicode
+    # Bidirectional Algorithm so ReportLab renders the glyphs in the correct
+    # right-to-left visual order.  Without both steps, Arabic appears as reversed,
+    # unconnected characters.
+    _ARABIC_RESHAPER_AVAILABLE = False
+    try:
+        import arabic_reshaper
+        from bidi.algorithm import get_display as _bidi_display
+        _ARABIC_RESHAPER_AVAILABLE = True
+    except ImportError:
+        pass  # Graceful degradation — Arabic text will still appear, just unshaped
+
 except ImportError:
     _RL = False
     _ARABIC_FONT = 'Helvetica'
