@@ -104,7 +104,7 @@ ID_CHECK_EVERY = 60
 # ── YOLO — Dual Model ─────────────────────────────────────────
 # Model 1: fine-tuned proctoring model — detects exam-specific objects
 #   0=Book  1=Earphone  2=Mobile_phone  3=cap  4=headset  5=smart_watch  6=sunglasses
-YOLO_MODEL_PROCTOR = os.path.join(MODELS_DIR, "yolo_proctoring.pt")
+YOLO_MODEL_PROCTOR = os.path.join(MODELS_DIR, "yolo11n.pt")
 YOLO_CONFS_PROCTOR = {
     "Book":         0.60,
     "Mobile_phone": 0.75,

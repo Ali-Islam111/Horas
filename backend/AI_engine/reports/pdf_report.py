@@ -31,38 +31,35 @@ from collections import Counter
 import config
 
 try:
-    from reportlab.lib.pagesizes     import A4
-    from reportlab.lib               import colors
-    from reportlab.lib.units         import cm, mm
-    from reportlab.lib.styles        import getSampleStyleSheet, ParagraphStyle
-    from reportlab.platypus          import (
+    from reportlab.lib.pagesizes   import A4
+    from reportlab.lib             import colors
+    from reportlab.lib.units       import cm, mm
+    from reportlab.lib.styles      import getSampleStyleSheet, ParagraphStyle
+    from reportlab.platypus        import (
         SimpleDocTemplate, Paragraph, Spacer, Image, Table, TableStyle,
         HRFlowable, PageBreak, KeepTogether,
     )
-    from reportlab.lib.enums         import TA_CENTER, TA_RIGHT, TA_LEFT
-    from reportlab.pdfgen            import canvas as rl_canvas
-    from reportlab.pdfbase           import pdfmetrics
-    from reportlab.pdfbase.ttfonts   import TTFont
+    from reportlab.lib.enums       import TA_CENTER, TA_RIGHT, TA_LEFT
+    from reportlab.pdfgen          import canvas as rl_canvas
+    from reportlab.pdfbase         import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
     _RL = True
-    _ARABIC_FONT = 'Helvetica'  # Default fallback — overwritten if an Arabic font is found
 
-    # Register a Unicode/Arabic-capable font.
-    # Priority: Tahoma (guaranteed on all Windows since XP, excellent Arabic coverage)
-    # → Segoe UI → Arial → DejaVu (Linux/macOS fallbacks).
+    # ── Unicode/Arabic font registration ─────────────────────
     try:
         import platform
         if platform.system() == "Windows":
             font_options = [
-                ("C:\\Windows\\Fonts\\tahoma.ttf",   "Tahoma"),    # best Arabic coverage on Windows
-                ("C:\\Windows\\Fonts\\segoeui.ttf",  "SegoeUI"),
-                ("C:\\Windows\\Fonts\\arial.ttf",    "Arial"),
+                ("C:\\Windows\\Fonts\\tahoma.ttf",  "Tahoma"),
+                ("C:\\Windows\\Fonts\\segoeui.ttf", "SegoeUI"),
+                ("C:\\Windows\\Fonts\\arial.ttf",   "Arial"),
             ]
         elif platform.system() == "Darwin":
             font_options = [
-                ("/Library/Fonts/Tahoma.ttf",                                       "Tahoma"),
-                ("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",                 "DejaVuSans"),
+                ("/Library/Fonts/Tahoma.ttf",                               "Tahoma"),
+                ("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",         "DejaVuSans"),
             ]
-        else:  # Linux
+        else:
             font_options = [
                 ("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",                 "DejaVuSans"),
                 ("/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf", "LiberationSans"),
@@ -73,35 +70,28 @@ try:
                 try:
                     pdfmetrics.registerFont(TTFont(font_name, font_path))
                     _ARABIC_FONT = font_name
-                    print(f"[Report] Registered '{font_name}' for Arabic/Unicode support")
+                    print(f"[Report] Registered '{font_name}' for Unicode/Arabic support")
                     break
                 except Exception as e:
                     print(f"[Report] Could not register '{font_name}': {e}")
         else:
-            print("[Report] No Arabic font found — falling back to Helvetica. "
-                  "Arabic text may not render correctly.")
+            print("[Report] No Arabic font found — falling back to Helvetica.")
     except Exception as e:
         print(f"[Report] Font registration error: {e}")
 
-# ── Arabic text preparation (reshape + BiDi) ──────────────────
-# arabic_reshaper converts Arabic letters to their correct contextual forms
-# (isolated / initial / medial / final).  python-bidi then applies the Unicode
-# Bidirectional Algorithm so ReportLab renders the glyphs in the correct
-# right-to-left visual order.  Without both steps, Arabic appears as reversed,
-# unconnected characters.
-_ARABIC_RESHAPER_AVAILABLE = False
-try:
-    import arabic_reshaper
-    from bidi.algorithm import get_display as _bidi_display
-    _ARABIC_RESHAPER_AVAILABLE = True
-except ImportError:
-    pass  # Graceful degradation — Arabic text will still appear, just unshaped
-        
-except ImportError:
+    # ── Arabic reshaper (optional) ────────────────────────────
+    try:
+        import arabic_reshaper
+        from bidi.algorithm import get_display as _bidi_display
+        _ARABIC_RESHAPER_AVAILABLE = True
+    except ImportError:
+        pass  # graceful — Arabic text appears unshaped but doesn't crash
+
+except Exception as e:
+    # Catches ImportError, OSError, AttributeError, or anything else
+    # that can go wrong during reportlab import/setup.
     _RL = False
-    _ARABIC_FONT = 'Helvetica'
-    _ARABIC_RESHAPER_AVAILABLE = False
-    print("[Report] reportlab not installed — PDF generation disabled.")
+    print(f"[Report] reportlab not available — PDF generation disabled. ({e})")
 
 
 # ── Colour helpers ────────────────────────────────────────────

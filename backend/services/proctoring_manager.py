@@ -8,6 +8,7 @@ from fastapi import WebSocket
 # Import our database tools to fetch the real student!
 from core.database import SessionLocal
 from models.session import Session as ExamSession  # Aliased so it doesn't clash with SQLAlchemy's Session
+from core.crud.session import update_session_report_path        
 
 # ─── THE ULTIMATE NAMESPACE HACK ───────────────────────────────────────
 # We must resolve the collision between backend/core/ and AI_engine/core.py
@@ -163,11 +164,25 @@ class ProctoringManager:
             ai_session = self.active_sessions[session_id]["ai_session"]
             
             print(f"[Manager] 🛑 Stopping Session {session_id}. Generating PDF...")
-            report = ai_session.stop() 
+            report = ai_session.stop()
             if not report.get("shutdown_clean", True):
                 print(f"[Manager] ⚠️ Session {session_id} ended with a crash. PDF may be incomplete.")
-            print(f"[Manager] 📄 PDF Report generated at: {report.get('pdf_path')}")
-            
+
+            pdf_path = report.get("pdf_path")
+            print(f"[Manager] 📄 PDF Report path: {pdf_path}")
+
+            if pdf_path:
+                db = SessionLocal()
+                try:
+                    update_session_report_path(db, int(session_id), pdf_path)
+                    print(f"[Manager] ✅ report_path saved to DB for session {session_id}.")
+                except Exception as e:
+                    print(f"[Manager] ❌ Failed to save report_path to database: {e}")
+                finally:
+                    db.close()
+            else:
+                print(f"[Manager] ⚠️ No PDF generated for session {session_id} (no events or crash).")
+
             del self.active_sessions[session_id]
             # Clean up readiness tracking
             self._ready_sessions.discard(session_id)
