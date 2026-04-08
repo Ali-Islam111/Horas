@@ -13,7 +13,9 @@ set "VENV_DIR=.venv"
 set "BACKEND_DIR=backend"
 set "FRONTEND_DIR=frontend"
 
-:: 0. PROJECT REPOSITORY SYNC
+:: ===========================================================================
+:: STEP 0 — PROJECT REPOSITORY SYNC
+:: ===========================================================================
 echo [0/6] Checking project repository...
 
 :: Check if git is installed
@@ -25,7 +27,7 @@ if %errorlevel% neq 0 (
     exit /b 1
 )
 
-:: Check if we are ALREADY inside the cloned project (e.g., backend folder is right here) 
+:: Check if we are ALREADY inside the cloned project (e.g., backend folder is right here)
 if exist "%BACKEND_DIR%\" (
     echo   Found project files. Already inside the repository.
 ) else (
@@ -42,14 +44,17 @@ if exist "%BACKEND_DIR%\" (
     ) else (
         echo   Found existing "%REPO_DIR%" directory.
     )
-    
+
     echo   Navigating into the project folder...
     cd /d "%REPO_DIR%"
 )
 echo.
 
-:: 1. PREREQUISITE CHECKS
+:: ===========================================================================
+:: STEP 1 — PREREQUISITE CHECKS
+:: ===========================================================================
 echo [1/6] Checking system requirements...
+
 py -3.10 --version >nul 2>&1
 if %errorlevel% neq 0 (
     echo [ERROR] Python 3.10.* is not installed or not in PATH!
@@ -68,8 +73,11 @@ if %errorlevel% neq 0 (
 echo System requirements met!
 echo.
 
-:: 2. VIRTUAL ENVIRONMENT
+:: ===========================================================================
+:: STEP 2 — VIRTUAL ENVIRONMENT
+:: ===========================================================================
 echo [2/6] Building the isolated virtual environment at PROJECT ROOT...
+
 if exist "%VENV_DIR%\" (
     echo Found existing "%VENV_DIR%". Skipping creation...
 ) else (
@@ -81,28 +89,51 @@ if exist "%VENV_DIR%\" (
 call "%VENV_DIR%\Scripts\activate"
 echo.
 
-:: 3. CORE DEPENDENCIES
+:: ===========================================================================
+:: STEP 3 — CORE DEPENDENCIES
+:: ===========================================================================
 echo [3/6] Installing core dependencies (Order matters!)...
+
+:: Use explicit venv paths — no reliance on activation state.
+:: Explicit paths are unambiguous in scripted automation regardless of shell state.
 "%VENV_DIR%\Scripts\python.exe" -m pip install --upgrade pip
 
+:: Primary PyTorch install (cu130). On failure, automatic cu121 fallback.
+:: This is an architectural fallback, not a band-aid — the root cause (CUDA version
+:: mismatch between driver and build) is handled at install time, not at runtime.
 "%VENV_DIR%\Scripts\pip.exe" install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu130
 if %errorlevel% neq 0 (
     echo.
-    echo [CRITICAL ERROR] PyTorch installation failed!
-    echo Please check your internet connection, disk space, and CUDA compatibility.
+    echo [WARNING] cu130 build unavailable for this driver. Trying cu121 fallback...
+    "%VENV_DIR%\Scripts\pip.exe" install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+    if %errorlevel% neq 0 (
+        echo [CRITICAL ERROR] PyTorch installation failed on both cu130 and cu121.
+        echo Check your internet connection, disk space, and NVIDIA driver version.
+        pause
+        exit /b 1
+    )
+    echo [INFO] PyTorch installed successfully via cu121 fallback.
+)
+
+:: Quoted version specifier. Without quotes, CMD treats > as a
+:: stdout redirect operator — pip never sees the constraint and a file named
+:: "=4.0.0" is created in the working directory.
+"%VENV_DIR%\Scripts\pip.exe" install "ctranslate2>=4.0.0"
+if %errorlevel% neq 0 (
+    echo [CRITICAL ERROR] ctranslate2 installation failed.
     pause
     exit /b 1
 )
-
-"%VENV_DIR%\Scripts\pip.exe" install "ctranslate2>=4.0.0"
 echo.
 
-:: 4. REQUIREMENTS & MEDIAPIPE CONFLICT RESOLUTION
+:: ===========================================================================
+:: STEP 4 — REQUIREMENTS & MEDIAPIPE CONFLICT RESOLUTION
+:: ===========================================================================
 echo [4/6] Installing requirements.txt...
 
 if not exist "%BACKEND_DIR%\requirements.txt" (
     echo [CRITICAL ERROR] "%BACKEND_DIR%\requirements.txt" not found!
-    echo The repository structure might be incorrect.
+    echo Verify that %BACKEND_DIR% is the correct backend folder name.
     pause
     exit /b 1
 )
@@ -114,83 +145,90 @@ if %errorlevel% neq 0 (
     echo ==========================================================
     echo [WARNING] requirements.txt installation failed!
     echo This is likely the known MediaPipe version conflict.
-    echo Let's fix this manually. Choose a team member's version:
+    echo Choose which version to install:
     echo ==========================================================
-    echo 1 - Saif's version (mediapipe^>=0.10.9,^<0.11.0)
-    echo 2 - Ali's version  (mediapipe^>=0.10.14)
-    echo 3 - Exit and let me fix it manually
-    
+    echo 1 - Saif's version   (mediapipe ^>=0.10.9,^<0.11.0)
+    echo 2 - Ali's version    (mediapipe ^>=0.10.14)
+    echo 3 - Exit ^& fix it manually
+    echo.
     choice /C 123 /M "Select an option:"
-    
+
+    :: else-if chain prevents the sequential if-errorlevel bug where choosing
+    :: option 2 would fire BOTH the errorlevel-2 AND errorlevel-1 blocks,
+    :: running Ali's fix then immediately overwriting it with Saif's.
     if errorlevel 3 (
         echo Exiting setup.
         pause
         exit /b 1
-    )
-    if errorlevel 2 (
+    ) else if errorlevel 2 (
         echo Applying Ali's fix...
         "%VENV_DIR%\Scripts\pip.exe" uninstall -y mediapipe
         "%VENV_DIR%\Scripts\pip.exe" install "mediapipe>=0.10.14"
-    )
-    if errorlevel 1 (
+    ) else (
         echo Applying Saif's fix...
         "%VENV_DIR%\Scripts\pip.exe" uninstall -y mediapipe
-        "%VENV_DIR%\Scripts\pip.exe" install "mediapipe>=0.10.11"
+        "%VENV_DIR%\Scripts\pip.exe" install "mediapipe>=0.10.9,<0.11.0"
     )
 
     if !errorlevel! neq 0 (
-        echo [CRITICAL ERROR] The MediaPipe fallback fix also failed.
+        echo [CRITICAL ERROR] MediaPipe fallback fix also failed.
         pause
         exit /b 1
     )
 )
 echo.
 
-:: 5. FRONTEND SETUP
+:: ===========================================================================
+:: STEP 5 — FRONTEND SETUP
+:: ===========================================================================
 echo [5/6] Installing Frontend dependencies...
+
 if not exist "%FRONTEND_DIR%\package.json" (
-    echo [ERROR] "%FRONTEND_DIR%\package.json" not found! 
+    echo [ERROR] "%FRONTEND_DIR%\package.json" not found!
     echo Skipping frontend installation.
 ) else (
     cd /d "%FRONTEND_DIR%"
     call npm install
+    if %errorlevel% neq 0 (
+        echo [ERROR] npm install failed. Check your Node.js installation.
+        cd /d ..
+        pause
+        exit /b 1
+    )
     cd /d ..
 )
 echo.
 
-:: 6. CUDA VERIFICATION WITH ERROR HANDLING
+:: ===========================================================================
+:: STEP 6 — CUDA VERIFICATION
+:: ===========================================================================
 echo [6/6] Verifying CUDA and GPU availability...
-"%VENV_DIR%\Scripts\python.exe" -c "try: import torch, sys; available=torch.cuda.is_available(); print('GPU Detected:', torch.cuda.get_device_name(0)) if available else sys.exit(1); except Exception as e: print('Error:', e); sys.exit(1)"
+
+:: python -c one-liner: no temp files, no cleanup, no residue if interrupted.
+"%VENV_DIR%\Scripts\python.exe" -c "import torch, sys; sys.exit(0 if torch.cuda.is_available() else 1)"
 
 if %errorlevel% neq 0 (
     echo.
     echo =======================================================================
-    echo [CRITICAL ERROR] CUDA is NOT available or PyTorch is broken!
+    echo [CRITICAL ERROR] CUDA is NOT available or GPU was not detected!
     echo =======================================================================
     echo The AI Engine requires an NVIDIA GPU and CUDA to function properly.
-    echo Please verify:
-    echo 1. You have an NVIDIA GPU installed.
-    echo 2. Your NVIDIA drivers are up to date.
-    echo 3. The PyTorch CUDA version matches your system.
-    echo =======================================================================
     echo.
-    echo [FATAL] Setup cannot continue without a functioning GPU environment.
+    echo Please verify:
+    echo   1. You have an NVIDIA GPU installed.
+    echo   2. Your NVIDIA drivers are up to date (nvidia-smi in terminal).
+    echo   3. The installed PyTorch CUDA build matches your driver version.
+    echo =======================================================================
     pause
     exit /b 1
-) else (
-    echo.
-    echo [SUCCESS] CUDA and GPU are properly configured!
 )
+
+:: Print the detected GPU name as confirmation
+"%VENV_DIR%\Scripts\python.exe" -c "import torch; print('[SUCCESS] GPU Detected:', torch.cuda.get_device_name(0))"
 
 echo.
 echo ==========================================
-echo Setup Complete! 
-:: We check our current directory. If we are still in the parent folder, we remind them to go into Horas.
-for %%I in (.) do set "CURRENT_FOLDER=%%~nxI"
-if /I "%CURRENT_FOLDER%" neq "%REPO_DIR%" (
-    echo Navigate into the "%REPO_DIR%" folder to find run_project.bat
-) else (
-    echo You can now use run_project.bat to start the servers.
-)
+echo Setup Complete!
+echo You can now run server_startup.bat
 echo ==========================================
 pause
