@@ -101,11 +101,11 @@ echo [3/6] Installing core dependencies (Order matters!)...
 :: Primary PyTorch install (cu130). On failure, automatic cu121 fallback.
 :: This is an architectural fallback, not a band-aid — the root cause (CUDA version
 :: mismatch between driver and build) is handled at install time, not at runtime.
-"%VENV_DIR%\Scripts\pip.exe" install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu130
+"%VENV_DIR%\Scripts\pip.exe" install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
 if %errorlevel% neq 0 (
     echo.
-    echo [WARNING] cu130 build unavailable for this driver. Trying cu121 fallback...
-    "%VENV_DIR%\Scripts\pip.exe" install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+    echo [WARNING] cu121 build unavailable for this driver. Trying cu130 fallback...
+    "%VENV_DIR%\Scripts\pip.exe" install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu130
     if %errorlevel% neq 0 (
         echo [CRITICAL ERROR] PyTorch installation failed on both cu130 and cu121.
         echo Check your internet connection, disk space, and NVIDIA driver version.
@@ -139,15 +139,19 @@ if not exist "%BACKEND_DIR%\requirements.txt" (
 )
 
 "%VENV_DIR%\Scripts\pip.exe" install -r "%BACKEND_DIR%\requirements.txt"
+set INSTALL_ERR=%errorlevel%
 
-if %errorlevel% neq 0 (
-    echo.
+:: mediapipe may be commented out in requirements.txt — verify it actually landed
+"%VENV_DIR%\Scripts\pip.exe" show mediapipe >nul 2>&1
+if %errorlevel% neq 0 set INSTALL_ERR=1
+
+if %INSTALL_ERR% neq 0 (    echo.
     echo ==========================================================
     echo [WARNING] requirements.txt installation failed!
     echo This is likely the known MediaPipe version conflict.
     echo Choose which version to install:
     echo ==========================================================
-    echo 1 - Saif's version   (mediapipe ^>=0.10.9,^<0.11.0)
+    echo 1 - Saif's version   (mediapipe ^>=0.10.11)
     echo 2 - Ali's version    (mediapipe ^>=0.10.14)
     echo 3 - Exit ^& fix it manually
     echo.
@@ -167,7 +171,7 @@ if %errorlevel% neq 0 (
     ) else (
         echo Applying Saif's fix...
         "%VENV_DIR%\Scripts\pip.exe" uninstall -y mediapipe
-        "%VENV_DIR%\Scripts\pip.exe" install "mediapipe>=0.10.9,<0.11.0"
+        "%VENV_DIR%\Scripts\pip.exe" install "mediapipe>=0.10.11"
     )
 
     if !errorlevel! neq 0 (
