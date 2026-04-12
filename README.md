@@ -19,12 +19,9 @@
 
 > **Watch the full system demo below:**
 
-<https://github.com/user-attachments/assets/Project-demo.mp4>
+<https://github.com/user-attachments/assets/03e6ac3d-3382-4d4c-a3e0-de62965296a3>
 
 > *If the video does not play inline, [click here to download the demo](./docs/Project-demo.mp4).*
-
-![Horas Demo Preview](./docs/Exam%20Session%20Interaction.png)
-
 ---
 
 ## 📋 Table of Contents
