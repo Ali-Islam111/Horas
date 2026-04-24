@@ -316,6 +316,24 @@ function ExaminerStudents({ onNavigate }) {
                     <td className="py-4 px-6 text-sm text-slate-400 text-center">{student.joinDate}</td>
                     <td className="py-4 px-6">
                       <div className="flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                        {/* View Report Button */}
+                        <button
+                          onClick={() => {
+                            localStorage.setItem('report_student_id', String(student.id))
+                            localStorage.setItem('report_student_name', student.name)
+                            onNavigate('report')
+                          }}
+                          className="p-1.5 rounded-lg bg-white/5 text-slate-300 hover:bg-purple-500/20 hover:text-purple-400 transition-colors border border-transparent hover:border-purple-500/30"
+                          title="View Proctoring Report"
+                        >
+                          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                            <polyline points="14 2 14 8 20 8" />
+                            <line x1="16" y1="13" x2="8" y2="13" />
+                            <line x1="16" y1="17" x2="8" y2="17" />
+                            <polyline points="10 9 9 9 8 9" />
+                          </svg>
+                        </button>
                         <button className="p-1.5 rounded-lg bg-white/5 text-slate-300 hover:bg-cyan-500/10 hover:text-cyan-400 transition-colors" title="View Details">
                           <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                             <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />

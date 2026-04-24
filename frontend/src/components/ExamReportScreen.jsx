@@ -5,10 +5,17 @@ import { useLanguage } from '../contexts/LanguageContext'
 
 function ExamReportScreen({ onNavigate }) {
   const { t, language, toggleLanguage } = useLanguage()
-  const [currentUser, setCurrentUser] = useState(null)
-  const [filterType, setFilterType] = useState('all')
-  const [studentsData, setStudentsData] = useState([])
-  const [loading, setLoading] = useState(true)
+  const [currentUser, setCurrentUser]     = useState(null)
+  const [filterType, setFilterType]       = useState('all')
+  const [studentsData, setStudentsData]   = useState([])
+  const [loading, setLoading]             = useState(true)
+  const [downloadingId, setDownloadingId] = useState(null)
+  const [downloadError, setDownloadError] = useState(null)
+
+  // ── Detect if we came from a student row ─────────────────────────────
+  const studentId   = localStorage.getItem('report_student_id')
+  const studentName = localStorage.getItem('report_student_name')
+  const isStudentView = Boolean(studentId)
 
   // API endpoint
   // Student names mapping (in real app, this would come from database)
@@ -23,107 +30,118 @@ function ExamReportScreen({ onNavigate }) {
     'ST008': 'Nour Sayed'
   }
 
-  // Fetch monitoring data from backend
   useEffect(() => {
+    const token = localStorage.getItem('auth_token')
+
     const fetchProfile = async () => {
       try {
-        const token = localStorage.getItem('auth_token')
         if (!token) return
-
         const response = await fetch(`${API_BASE_URL}/api/users/me`, {
           headers: { Authorization: `Bearer ${token}` },
         })
-
-        if (response.ok) {
-          const data = await response.json()
-          setCurrentUser(data)
-        }
+        if (response.ok) setCurrentUser(await response.json())
       } catch (error) {
         console.error('Failed to fetch examiner profile:', error)
       }
     }
 
-    const fetchMonitoringData = async () => {
+    // ── Student-specific report view ─────────────────────────────────────
+    const fetchStudentReports = async () => {
       try {
-        console.log('📊 [REPORT] Fetching monitoring data from backend...')
-        const response = await fetch(`${API_BASE_URL}/get_all_students_monitoring`)
-        const data = await response.json()
-
-        console.log('✅ [REPORT] Received data:', data)
-
-        // Transform backend data to match UI format
-        const transformedData = data.students.map(student => {
-          const name = studentNames[student.student_id] || student.student_id
-          const firstName = name.split(' ')[0]
-
-          // Calculate start and end times from timestamps
-          const startTime = student.first_timestamp ? new Date(student.first_timestamp).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : 'N/A'
-          const endTime = student.last_timestamp ? new Date(student.last_timestamp).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : 'N/A'
-
-          // Calculate duration
-          let duration = 'N/A'
-          if (student.first_timestamp && student.last_timestamp) {
-            const start = new Date(student.first_timestamp)
-            const end = new Date(student.last_timestamp)
-            const diffMs = end - start
-            const diffMins = Math.floor(diffMs / 60000)
-            duration = `${diffMins} min`
-          }
-
-          return {
-            id: student.student_id,
-            name: name,
-            firstName: firstName,
-            suspiciousMoves: student.total_violations,
-            warnings: student.total_violations,
-            cheatingDetected: student.cheating_detected,
-            examDate: student.first_timestamp ? new Date(student.first_timestamp).toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' }) : 'N/A',
-            startTime: startTime,
-            endTime: endTime,
-            duration: duration,
-            violations: student.violations,
-            totalRecords: student.total_records
-          }
-        })
-
-        setStudentsData(transformedData)
+        setLoading(true)
+        const res = await fetch(
+          `${API_BASE_URL}/api/sessions/reports/student/${studentId}`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        )
+        if (!res.ok) throw new Error(`Server error ${res.status}`)
+        const data = await res.json()    // List[ReportListItem]
+        setStudentsData(data)
+      } catch (err) {
+        console.error('[ExamReportScreen] Failed to fetch student reports:', err)
+      } finally {
         setLoading(false)
-      } catch (error) {
-        console.error('❌ [REPORT] Error fetching monitoring data:', error)
+      }
+    }
+
+    // ── Teacher overview — all submissions ───────────────────────────────
+    const fetchAllSubmissions = async () => {
+      try {
+        setLoading(true)
+        const res = await fetch(`${API_BASE_URL}/api/sessions/all-submissions`, {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+        if (!res.ok) throw new Error(`Server error ${res.status}`)
+        const data = await res.json()    // List[SessionResponse]
+        setStudentsData(data)
+      } catch (err) {
+        console.error('[ExamReportScreen] Failed to fetch all submissions:', err)
+      } finally {
         setLoading(false)
       }
     }
 
     fetchProfile()
-    fetchMonitoringData()
+    if (isStudentView) {
+      fetchStudentReports()
+    } else {
+      fetchAllSubmissions()
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [studentId])
 
-    // Refresh every 5 seconds
-    const interval = setInterval(fetchMonitoringData, 5000)
+  // ── Download handler ─────────────────────────────────────────────────
+  const handleDownload = async (sessionId) => {
+    setDownloadingId(sessionId)
+    setDownloadError(null)
+    try {
+      const token = localStorage.getItem('auth_token')
+      const res = await fetch(
+        `${API_BASE_URL}/api/sessions/${sessionId}/report`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      )
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.detail || `Error ${res.status}`)
+      }
+      const blob = await res.blob()
+      const url  = URL.createObjectURL(blob)
+      const a    = document.createElement('a')
+      a.href     = url
+      a.download = `report_session_${sessionId}.pdf`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch (err) {
+      console.error('[Download]', err)
+      setDownloadError(`Could not download report: ${err.message}`)
+    } finally {
+      setDownloadingId(null)
+    }
+  }
 
-    return () => clearInterval(interval)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  // ── Derived data for the overview mode ───────────────────────────────
+  const candidates = isStudentView
+    ? []   // student view uses its own list below
+    : studentsData
 
-  const candidates = studentsData
-  const activityData = studentsData.map(s => ({
-    name: s.firstName,
-    suspiciousMoves: s.suspiciousMoves,
-    warnings: s.warnings
+  const activityData = candidates.map(s => ({
+    name: `S#${s.user_id || s.id}`,
+    suspiciousMoves: s.final_score ? Math.round(100 - s.final_score) : 0,
+    warnings: s.has_report ? 1 : 0,
   }))
 
   const stats = {
-    totalParticipants: studentsData.length > 0 ? studentsData.length : 45, // Fallback purely for appearance if API is unavailable during demo
-    completedExams: studentsData.length > 0 ? studentsData.length : 42,
-    ongoingExams: studentsData.length > 0 ? 0 : 3,
-    flaggedForCheating: studentsData.filter(s => s.cheatingDetected).length
+    totalParticipants:  studentsData.length,
+    completedExams:     studentsData.filter(s => s.status === 'completed').length,
+    ongoingExams:       studentsData.filter(s => s.status === 'in_progress').length,
+    flaggedForCheating: studentsData.filter(s => s.has_report).length,
   }
 
   const filteredCandidates = filterType === 'all'
     ? candidates
-    : candidates.filter(c => c.cheatingDetected)
+    : candidates.filter(c => c.has_report)
 
   const maxValue = activityData.length > 0
-    ? Math.max(...activityData.flatMap(d => [d.suspiciousMoves, d.warnings]))
+    ? Math.max(...activityData.flatMap(d => [d.suspiciousMoves, d.warnings]), 1)
     : 10
 
   return (
@@ -230,6 +248,131 @@ function ExamReportScreen({ onNavigate }) {
               <p className="text-white text-lg font-bold">{t('examiner.report.loading')}</p>
               <p className="text-slate-400 text-sm mt-2">{t('examiner.report.connecting')}</p>
             </div>
+          </div>
+        ) : isStudentView ? (
+          // ── Student report detail view ─────────────────────────────────
+          <div className="animate-fade-in-up">
+            {/* Back breadcrumb */}
+            <button
+              onClick={() => {
+                localStorage.removeItem('report_student_id')
+                localStorage.removeItem('report_student_name')
+                onNavigate('examinerStudents')
+              }}
+              className="flex items-center gap-2 text-slate-400 hover:text-white text-sm font-medium mb-6 transition-colors"
+            >
+              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <polyline points="15 18 9 12 15 6" />
+              </svg>
+              Back to Students
+            </button>
+
+            <div className="flex items-center gap-4 mb-8">
+              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-purple-500 to-cyan-500 flex items-center justify-center text-white text-lg font-bold shadow-[0_0_20px_rgba(168,85,247,0.4)]">
+                {studentName?.charAt(0)?.toUpperCase() || 'S'}
+              </div>
+              <div>
+                <h2 className="text-white text-xl font-bold">{studentName || `Student #${studentId}`}</h2>
+                <p className="text-slate-400 text-sm">{studentsData.length} proctoring report{studentsData.length !== 1 ? 's' : ''} found</p>
+              </div>
+            </div>
+
+            {/* Download error banner */}
+            {downloadError && (
+              <div className="flex items-center gap-3 mb-6 rounded-2xl border border-red-500/20 bg-red-500/10 p-4 text-red-400 text-sm">
+                <svg className="w-5 h-5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" />
+                </svg>
+                {downloadError}
+                <button onClick={() => setDownloadError(null)} className="ml-auto text-red-300 hover:text-red-100 font-semibold">Dismiss</button>
+              </div>
+            )}
+
+            {studentsData.length === 0 ? (
+              <div className="rounded-2xl border border-white/5 bg-white/5 backdrop-blur-md p-16 text-center">
+                <div className="w-20 h-20 mx-auto bg-white/5 rounded-2xl flex items-center justify-center mb-6 border border-white/10">
+                  <svg className="w-10 h-10 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                    <polyline points="14 2 14 8 20 8" />
+                  </svg>
+                </div>
+                <h3 className="text-xl font-bold text-white mb-2">No Reports Yet</h3>
+                <p className="text-slate-400 text-sm">This student has no completed proctoring reports.</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {studentsData.map((session) => (
+                  <div
+                    key={session.id}
+                    className="group flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 rounded-2xl border border-white/5 bg-white/5 backdrop-blur-md p-5 hover:bg-white/[0.07] hover:border-purple-500/20 transition-all duration-300"
+                  >
+                    <div className="flex items-center gap-4">
+                      <div className="w-10 h-10 rounded-xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center flex-shrink-0">
+                        <svg className="w-5 h-5 text-purple-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                          <polyline points="14 2 14 8 20 8" />
+                        </svg>
+                      </div>
+                      <div>
+                        <p className="text-white font-semibold text-sm">Session #{session.id} — Exam #{session.exam_id}</p>
+                        <div className="flex flex-wrap items-center gap-3 mt-1">
+                          <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium border ${
+                            session.status === 'completed'
+                              ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                              : 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20'
+                          }`}>
+                            <span className={`w-1.5 h-1.5 rounded-full ${
+                              session.status === 'completed' ? 'bg-emerald-400' : 'bg-cyan-400'
+                            }`} />
+                            {session.status}
+                          </span>
+                          {session.final_score !== null && session.final_score !== undefined && (
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs font-bold border ${
+                              session.final_score >= 85
+                                ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                                : session.final_score >= 70
+                                ? 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20'
+                                : 'bg-orange-500/10 text-orange-400 border-orange-500/20'
+                            }`}>
+                              Score: {Math.round(session.final_score)}%
+                            </span>
+                          )}
+                          {session.submitted_at && (
+                            <span className="text-slate-500 text-xs">
+                              {new Date(session.submitted_at).toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' })}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      {session.has_report ? (
+                        <button
+                          onClick={() => handleDownload(session.id)}
+                          disabled={downloadingId === session.id}
+                          className="relative group/btn flex items-center gap-2 px-4 py-2 rounded-xl font-semibold text-xs transition-all duration-300 overflow-hidden shadow-[0_0_14px_rgba(168,85,247,0.2)] hover:shadow-[0_0_22px_rgba(168,85,247,0.4)] hover:-translate-y-0.5 disabled:opacity-60 disabled:cursor-not-allowed"
+                        >
+                          <div className="absolute inset-0 bg-gradient-to-r from-purple-600 to-cyan-600 opacity-90 group-hover/btn:opacity-100 transition-opacity" />
+                          <svg className="w-3.5 h-3.5 relative z-10 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                            {downloadingId === session.id
+                              ? <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+                              : <><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></>}
+                          </svg>
+                          <span className="relative z-10 text-white">
+                            {downloadingId === session.id ? 'Downloading…' : 'Download PDF'}
+                          </span>
+                        </button>
+                      ) : (
+                        <span className="px-4 py-2 rounded-xl text-xs font-semibold bg-white/5 border border-white/5 text-slate-500">
+                          No Report
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         ) : (
           <div className="animate-fade-in-up">
