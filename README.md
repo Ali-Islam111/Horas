@@ -245,7 +245,7 @@ ACCESS_TOKEN_EXPIRE_MINUTES=60
 DATABASE_URL=sqlite:///./horas.db
 
 # PostgreSQL (production-ready alternative):
-# DATABASE_URL=postgresql://user:password@localhost:5432/horas_db
+# DATABASE_URL=postgresql://user:password@localhost:5432/horas_db 
 
 # ─── Google OAuth2 ───────────────────────────────────────────
 GOOGLE_CLIENT_ID=your-google-client-id.apps.googleusercontent.com
@@ -555,7 +555,7 @@ This project was developed as a graduation project.
 | Saif El-Dien El-Saied Mohammed | AI Engineer | [saifs22](https://github.com/saifs22) | [Saif El Dien El Saied](https://www.linkedin.com/in/saif-el-dien-el-saied-a63794325/) |
 | Karim Abdel-Hakim Amer | AI Engineer | [Karim-Abdel-Hakim-Amer](https://github.com/Karim-Abdel-Hakim-Amer) | [Karim Abd-Elhakim](https://www.linkedin.com/in/karimabdelhakim/) |
 | Amr Bakr | Data Scientist | [AmrBakr12](https://github.com/Amrbakr12) | [Amr Bakr](https://www.linkedin.com/in/amr-bakr-91616b271/) |
-| Moamen Hekal | DevOps Engineer | — | — |
+| Moamen Hekal | DevOps Engineer | [MoamenHekal](https://github.com/MOAMEN-HAKEL) | [Moamen Hekal](https://www.linkedin.com/in/moamen-hakel-401380358/) |
 
 We would like to thank our academic supervisor: **Dr.Mahmoud Mounir Mahmoud** for his guidance throughout the project.
 
