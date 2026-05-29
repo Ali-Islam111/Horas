@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, computed_field
 from typing import Dict, Literal, Optional, Any
 from datetime import datetime
 
@@ -20,21 +20,18 @@ class SessionResponse(SessionBase):
     started_at: datetime
     submitted_at: Optional[datetime]
     ai_ready_at: Optional[datetime] = None
-    has_report: bool = False                # ← replaces report_path
+    report_path: Optional[str] = Field(default=None, exclude=True)
+
+    @computed_field
+    def has_report(self) -> bool:
+        """
+        The frontend never needs the path. It only needs to know whether to show a 'Download' button.
+        The actual path stays on the server, looked up fresh from the DB at download time.
+        """
+        return bool(self.report_path)
 
     class Config:
         from_attributes = True
-
-    """
-    The frontend never needs the path. It only needs to know whether to show a "Download" button.
-    The actual path stays on the server, looked up fresh from the DB at download time.
-    """
-    @classmethod
-    def model_validate(cls, obj, **kwargs):
-        # Compute has_report from the ORM object before Pydantic serializes it
-        data = super().model_validate(obj, **kwargs)
-        data.has_report = bool(getattr(obj, 'report_path', None))
-        return data
 
 class SubmissionResult(BaseModel):
     message: str
@@ -52,14 +49,11 @@ class ReportListItem(BaseModel):
     status: str
     final_score: Optional[float]
     submitted_at: Optional[datetime]
-    has_report: bool = False
+    report_path: Optional[str] = Field(default=None, exclude=True)
+
+    @computed_field
+    def has_report(self) -> bool:
+        return bool(self.report_path)
 
     class Config:
         from_attributes = True
-
-    @classmethod
-    def model_validate(cls, obj, **kwargs):
-        # Compute has_report from the ORM object before Pydantic serializes it
-        data = super().model_validate(obj, **kwargs)
-        data.has_report = bool(getattr(obj, 'report_path', None))
-        return data

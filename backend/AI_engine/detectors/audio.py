@@ -82,6 +82,17 @@ def _ensure_whisper():
         return  # Already loaded
 
     try:
+        import os
+        import site
+        # Tell Windows Python where to find the nvidia-cublas-cu12 DLLs
+        for sp in site.getsitepackages():
+            cublas_bin = os.path.join(sp, "nvidia", "cublas", "bin")
+            cudnn_bin = os.path.join(sp, "nvidia", "cudnn", "bin")
+            cudart_bin = os.path.join(sp, "nvidia", "cuda_runtime", "bin")
+            if os.path.exists(cublas_bin): os.add_dll_directory(cublas_bin)
+            if os.path.exists(cudnn_bin): os.add_dll_directory(cudnn_bin)
+            if os.path.exists(cudart_bin): os.add_dll_directory(cudart_bin)
+
         from faster_whisper import WhisperModel
         import torch
 

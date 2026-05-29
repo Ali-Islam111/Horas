@@ -1,5 +1,5 @@
 # ==============================================================
-# detectors/face_signals.py  —  Gaze · Lip (GlowDetector removed V10.0)
+# detectors/face_signals.py  —  Gaze · Lip · Blink · Glow
 # ==============================================================
 #
 # Fixes vs GitHub version:
@@ -170,3 +170,150 @@ class LipMovementDetector:
         return dict(lar=float(lar), lip_open=open_, lip_moving=moving)
 
 
+# ── Screen / Phone Glow — 4-Signal Fusion ────────────────────
+class GlowDetector:
+    """
+    Detects screen/phone light on face using four independent signals.
+    Requires 2+ signals active simultaneously to trigger — kills false
+    positives from normal lighting changes that fool single-signal detectors.
+
+    Signal 1 — Brightness spike (HSV V channel)
+        Any screen — white, blue, warm, cool — raises face brightness.
+        Compared to a per-session calibrated baseline so ambient light
+        level doesn't matter. Catches Google Docs, YouTube, everything.
+
+    Signal 2 — Saturation drop (HSV S channel)
+        Screen light is broad-spectrum and washes out skin color.
+        A drop in face saturation vs baseline indicates external light.
+
+    Signal 3 — Temporal flicker (brightness variance over 10 frames)
+        Screens change content → face brightness fluctuates slightly.
+        Static room lighting has near-zero variance. Most reliable signal.
+
+    Signal 4 — BGR blue excess (original method, now one vote of four)
+        Still useful for phones held close with strong blue cast.
+
+    Fusion: weighted_score > GLOW_FUSION_THR AND n_signals_firing >= GLOW_MIN_SIGNALS AND face not occluded
+    """
+
+    _W_BRIGHT  = 0.30
+    _W_SAT     = 0.25
+    _W_FLICKER = 0.35
+    _W_BLUE    = 0.10
+    _CALIB_FRAMES = 20
+
+    def __init__(self):
+        self._score_buf  = deque(maxlen=config.GLOW_SMOOTH)
+        self._v_baseline = None
+        self._s_baseline = None
+        self._calib_buf  = []
+        self._calib_done = False
+        self._v_history  = deque(maxlen=10)
+        self._blue_buf   = deque(maxlen=config.GLOW_SMOOTH)
+
+    def _crop(self, frame, bbox):
+        if bbox is None: return None
+        x1, y1, x2, y2 = bbox
+        x1,y1 = max(0,x1), max(0,y1)
+        x2,y2 = min(frame.shape[1],x2), min(frame.shape[0],y2)
+        c = frame[y1:y2, x1:x2]
+        return c if c.size > 0 else None
+
+    def process(self, frame, bbox) -> dict:
+        crop = self._crop(frame, bbox)
+        if crop is None:
+            self._score_buf.append(0.0)
+            return dict(glow_score=0.0, glow_detected=False, signals={})
+
+        hsv    = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV).astype(np.float32)
+        v_mean = float(np.mean(hsv[:,:,2]))
+        s_mean = float(np.mean(hsv[:,:,1]))
+
+        # ── Calibration (first CALIB_FRAMES frames) ──────────
+        if not self._calib_done:
+            self._calib_buf.append((v_mean, s_mean))
+            if len(self._calib_buf) >= self._CALIB_FRAMES:
+                arr = np.array(self._calib_buf)
+                self._v_baseline = float(arr[:,0].mean())
+                self._s_baseline = float(arr[:,1].mean())
+                self._calib_done = True
+            self._score_buf.append(0.0)
+            return dict(glow_score=0.0, glow_detected=False,
+                        signals={"calibrating": True})
+
+        self._v_history.append(v_mean)
+
+        # ── Signal 1: Brightness spike ────────────────────────
+        v_delta = v_mean - self._v_baseline
+        s1 = min(1.0, max(0.0,
+            (v_delta - config.GLOW_V_SPIKE_MIN) /
+            (config.GLOW_V_SPIKE_MAX - config.GLOW_V_SPIKE_MIN + 1e-6)))
+        s1_flag = v_delta > config.GLOW_V_SPIKE_MIN
+
+        # ── Signal 2: Saturation drop ─────────────────────────
+        s_delta = self._s_baseline - s_mean
+        s2 = min(1.0, max(0.0,
+            (s_delta - config.GLOW_S_DROP_MIN) /
+            (config.GLOW_S_DROP_MAX - config.GLOW_S_DROP_MIN + 1e-6)))
+        s2_flag = s_delta > config.GLOW_S_DROP_MIN
+
+        # ── Signal 3: Temporal flicker ────────────────────────
+        if len(self._v_history) >= 5:
+            v_var  = float(np.var(list(self._v_history)))
+            s3 = min(1.0, max(0.0,
+                (v_var - config.GLOW_FLICKER_MIN) /
+                (config.GLOW_FLICKER_MAX - config.GLOW_FLICKER_MIN + 1e-6)))
+            s3_flag = v_var > config.GLOW_FLICKER_MIN
+        else:
+            v_var = 0.0; s3 = 0.0; s3_flag = False
+
+        # ── Signal 4: BGR blue excess ─────────────────────────
+        b = crop[:,:,0].astype(float)
+        r = crop[:,:,2].astype(float)
+        blue_ratio = float(((b - r) > config.GLOW_BLUE_EXCESS).sum()) / (crop.shape[0]*crop.shape[1] + 1)
+        self._blue_buf.append(blue_ratio)
+        blue_smooth = float(np.mean(self._blue_buf))
+        s4 = min(1.0, blue_smooth / (config.GLOW_AREA_MIN + 1e-6))
+        s4_flag = blue_smooth > config.GLOW_AREA_MIN * 0.5
+
+        # ── Fusion ────────────────────────────────────────────
+        weighted = (self._W_BRIGHT  * s1 +
+                    self._W_SAT     * s2 +
+                    self._W_FLICKER * s3 +
+                    self._W_BLUE    * s4)
+        n_flags  = sum([s1_flag, s2_flag, s3_flag, s4_flag])
+
+        # ── Face occlusion guard ──────────────────────────────
+        # If the face crop is not skin-like (e.g. a book covering the face),
+        # the glow signals are meaningless — skip detection this frame.
+        # Skin hue in HSV: roughly H in [0,25] or [160,180], S > 30, V > 60
+        h_ch = hsv[:,:,0]
+        s_ch = hsv[:,:,1]
+        v_ch = hsv[:,:,2]
+        skin_mask = (
+            ((h_ch <= 25) | (h_ch >= 160)) &
+            (s_ch > 30) & (v_ch > 60)
+        )
+        skin_ratio = float(skin_mask.sum()) / (skin_mask.size + 1e-6)
+        face_occluded = skin_ratio < 0.12   # less than 12% skin pixels → face covered
+
+        self._score_buf.append(weighted)
+        smooth = float(np.mean(self._score_buf))
+        min_signals = getattr(config, 'GLOW_MIN_SIGNALS', 3)
+        detected = (smooth > config.GLOW_FUSION_THR
+                    and n_flags >= min_signals
+                    and not face_occluded)
+
+        return dict(
+            glow_score    = round(smooth, 4),
+            glow_detected = detected,
+            signals       = {
+                "brightness_spike": round(s1, 3),
+                "saturation_drop":  round(s2, 3),
+                "flicker":          round(s3, 3),
+                "blue_excess":      round(s4, 3),
+                "n_signals":        n_flags,
+                "v_delta":          round(v_delta, 1),
+                "v_variance":       round(v_var, 2),
+            }
+        )

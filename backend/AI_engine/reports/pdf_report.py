@@ -25,41 +25,45 @@
 # ==============================================================
 
 import os
+import numpy as np
 from datetime import datetime
 from collections import Counter
 
 import config
 
 try:
-    from reportlab.lib.pagesizes   import A4
-    from reportlab.lib             import colors
-    from reportlab.lib.units       import cm, mm
-    from reportlab.lib.styles      import getSampleStyleSheet, ParagraphStyle
-    from reportlab.platypus        import (
+    from reportlab.lib.pagesizes     import A4
+    from reportlab.lib               import colors
+    from reportlab.lib.units         import cm, mm
+    from reportlab.lib.styles        import getSampleStyleSheet, ParagraphStyle
+    from reportlab.platypus          import (
         SimpleDocTemplate, Paragraph, Spacer, Image, Table, TableStyle,
         HRFlowable, PageBreak, KeepTogether,
     )
-    from reportlab.lib.enums       import TA_CENTER, TA_RIGHT, TA_LEFT
-    from reportlab.pdfgen          import canvas as rl_canvas
-    from reportlab.pdfbase         import pdfmetrics
-    from reportlab.pdfbase.ttfonts import TTFont
+    from reportlab.lib.enums         import TA_CENTER, TA_RIGHT, TA_LEFT
+    from reportlab.pdfgen            import canvas as rl_canvas
+    from reportlab.pdfbase           import pdfmetrics
+    from reportlab.pdfbase.ttfonts   import TTFont
     _RL = True
+    _ARABIC_FONT = 'Helvetica'  # Default fallback — overwritten if an Arabic font is found
 
-    # ── Unicode/Arabic font registration ─────────────────────
+    # Register a Unicode/Arabic-capable font.
+    # Priority: Tahoma (guaranteed on all Windows since XP, excellent Arabic coverage)
+    # → Segoe UI → Arial → DejaVu (Linux/macOS fallbacks).
     try:
         import platform
         if platform.system() == "Windows":
             font_options = [
-                ("C:\\Windows\\Fonts\\tahoma.ttf",  "Tahoma"),
-                ("C:\\Windows\\Fonts\\segoeui.ttf", "SegoeUI"),
-                ("C:\\Windows\\Fonts\\arial.ttf",   "Arial"),
+                ("C:\\Windows\\Fonts\\tahoma.ttf",   "Tahoma"),    # best Arabic coverage on Windows
+                ("C:\\Windows\\Fonts\\segoeui.ttf",  "SegoeUI"),
+                ("C:\\Windows\\Fonts\\arial.ttf",    "Arial"),
             ]
         elif platform.system() == "Darwin":
             font_options = [
-                ("/Library/Fonts/Tahoma.ttf",                               "Tahoma"),
-                ("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",         "DejaVuSans"),
+                ("/Library/Fonts/Tahoma.ttf",                                       "Tahoma"),
+                ("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",                 "DejaVuSans"),
             ]
-        else:
+        else:  # Linux
             font_options = [
                 ("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",                 "DejaVuSans"),
                 ("/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf", "LiberationSans"),
@@ -70,28 +74,35 @@ try:
                 try:
                     pdfmetrics.registerFont(TTFont(font_name, font_path))
                     _ARABIC_FONT = font_name
-                    print(f"[Report] Registered '{font_name}' for Unicode/Arabic support")
+                    print(f"[Report] Registered '{font_name}' for Arabic/Unicode support")
                     break
                 except Exception as e:
                     print(f"[Report] Could not register '{font_name}': {e}")
         else:
-            print("[Report] No Arabic font found — falling back to Helvetica.")
+            print("[Report] No Arabic font found — falling back to Helvetica. "
+                  "Arabic text may not render correctly.")
     except Exception as e:
         print(f"[Report] Font registration error: {e}")
 
-    # ── Arabic reshaper (optional) ────────────────────────────
+    # ── Arabic text preparation (reshape + BiDi) ──────────────────
+    # arabic_reshaper converts Arabic letters to their correct contextual forms
+    # (isolated / initial / medial / final).  python-bidi then applies the Unicode
+    # Bidirectional Algorithm so ReportLab renders the glyphs in the correct
+    # right-to-left visual order.  Without both steps, Arabic appears as reversed,
+    # unconnected characters.
+    _ARABIC_RESHAPER_AVAILABLE = False
     try:
         import arabic_reshaper
         from bidi.algorithm import get_display as _bidi_display
         _ARABIC_RESHAPER_AVAILABLE = True
     except ImportError:
-        pass  # graceful — Arabic text appears unshaped but doesn't crash
-
-except Exception as e:
-    # Catches ImportError, OSError, AttributeError, or anything else
-    # that can go wrong during reportlab import/setup.
+        pass  # Graceful degradation — Arabic text will still appear, just unshaped
+        
+except ImportError:
     _RL = False
-    print(f"[Report] reportlab not available — PDF generation disabled. ({e})")
+    _ARABIC_FONT = 'Helvetica'
+    _ARABIC_RESHAPER_AVAILABLE = False
+    print("[Report] reportlab not installed — PDF generation disabled.")
 
 
 # ── Colour helpers ────────────────────────────────────────────
@@ -201,21 +212,26 @@ class _Decorator:
 
 # ── Main generator ────────────────────────────────────────────
 def generate(
-    events:           list[dict],
-    session_id:       str,
-    student_name:     str               = "Unknown",
-    start_time:       str               = "",
-    end_time:         str               = "",
-    reference_image:  "str | None"      = None,
-    attention_history:"list[tuple]"     = None,
-    detector_stats:   "dict | None"     = None,
+    events:              list[dict],
+    session_id:          str,
+    student_name:        str               = "Unknown",
+    start_time:          str               = "",
+    end_time:            str               = "",
+    reference_image:     "str | None"      = None,
+    attention_history:   "list[tuple]"     = None,
+    detector_stats:      "dict | None"     = None,
+    unknown_object_frame: "np.ndarray | None" = None,
 ) -> "str | None":
     """
     Build the full PDF evidence report.
 
-    events        : list of dicts from EventLogger.events
-    detector_stats: optional dict of final per-detector readings
-                    e.g. {"Head Pose": {...}, "Screen Glow": {...}, ...}
+    events               : list of dicts from EventLogger.events
+    detector_stats       : optional dict of final per-detector readings
+                           e.g. {"Head Pose": {...}, "Screen Glow": {...}, ...}
+    unknown_object_frame : optional BGR frame (np.ndarray) captured when the
+                           fine-tuned YOLO model detected an unrecognised class.
+                           When provided, Section 5.5 is inserted with the frame
+                           saved to disk and rendered in the PDF.
     Returns the path of the generated PDF, or None on failure.
     """
     if not _RL:
@@ -568,6 +584,50 @@ def generate(
                 dt.setStyle(TableStyle(dt_styles))
                 elems.append(dt)
                 elems.append(Spacer(1, 6))
+        elems.append(PageBreak())
+
+    # ════════════════════════════════════════════════════════
+    # 5.5  UNKNOWN OBJECT DETECTED
+    # ════════════════════════════════════════════════════════
+    if unknown_object_frame is not None:
+        # Save the frame to disk so ReportLab can embed it
+        _unk_path = os.path.join(
+            config.IMAGE_DIR,
+            f"unknown_object_{session_id}.jpg",
+        )
+        try:
+            import cv2 as _cv2
+            _cv2.imwrite(_unk_path, unknown_object_frame)
+        except Exception as _e:
+            print(f"[Report] Could not save unknown-object frame: {_e}")
+            _unk_path = None
+
+        elems.append(Paragraph("Unknown Object Detected", st_h2))
+        elems.append(HRFlowable(width="100%", thickness=1,
+                                 color=_C["border"], spaceAfter=8))
+        elems.append(Paragraph(
+            "The fine-tuned YOLO model detected an object that does not belong "
+            "to any known proctoring class (phone, book, earphone, etc.). "
+            "The frame below was captured at the moment of detection for manual review.",
+            st_body,
+        ))
+        elems.append(Spacer(1, 6))
+
+        if _unk_path and os.path.exists(_unk_path):
+            try:
+                unk_img = Image(_unk_path, width=10*cm, height=7.5*cm)
+                unk_img.hAlign = "LEFT"
+                elems.append(unk_img)
+                elems.append(Paragraph(
+                    f"Evidence: {os.path.basename(_unk_path)}", st_caption))
+            except Exception:
+                elems.append(Paragraph(
+                    "(Frame could not be embedded — see evidence folder.)", st_body))
+        else:
+            elems.append(Paragraph(
+                "(Frame could not be saved to disk.)", st_body))
+
+        elems.append(Spacer(1, 10))
         elems.append(PageBreak())
 
     # ════════════════════════════════════════════════════════

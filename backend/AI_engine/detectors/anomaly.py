@@ -35,12 +35,12 @@ _SKLEARN_TRIED: bool  = False
 def build_vector(head: dict, gaze: dict, lip: dict) -> np.ndarray:
     """Assemble one N_FEATURES-dim vector from detector outputs."""
     return np.array([
-        head.get("yaw_dev",   0.0),
-        head.get("pitch_dev", 0.0),
-        head.get("roll_dev",  0.0),
-        gaze.get("avg_h",     0.5),
-        gaze.get("avg_v",     0.5),
-        lip.get("lar",        0.0),
+        head.get("yaw_dev",     0.0),
+        head.get("pitch_dev",   0.0),
+        head.get("roll_dev",    0.0),
+        gaze.get("avg_h",       0.5),
+        gaze.get("avg_v",       0.5),
+        lip.get("lar",          0.0),
     ], dtype=np.float32)
 
 

@@ -22,7 +22,7 @@
 #     sessions never interleave their log lines.
 #
 #   FIX C — get_status() reference leak
-#     V8.0: self._head/_gaze/_lip assigned directly — the background
+#     V8.0: self._head/_gaze/_lip/_glow assigned directly — the background
 #     thread could mutate these dicts while the backend was reading them.
 #     V9.0: assigned with .copy() so get_status() always returns snapshots.
 #
@@ -60,7 +60,13 @@ from detectors.audio             import MicMonitor
 from detectors.dataset_collector import DatasetCollector
 from reports.pdf_report          import generate
 
-
+try:
+    import mediapipe as mp
+    _mp_mesh = mp.solutions.face_mesh
+    _MP_OK   = True
+except ImportError:
+    _MP_OK = False
+    print("[Session] mediapipe not available.")
 
 # FIX A (V9.0): offline_trainer imported lazily inside the function that
 # needs it — not at module level. This removes the duplicate TF + sklearn
@@ -168,7 +174,6 @@ class ProctoringSession:
         self._head           = {}
         self._gaze           = {}
         self._lip            = {}
-
         self._if_res         = {}
         self._lstm_res       = {}
         self._last_frame     = None
@@ -208,8 +213,7 @@ class ProctoringSession:
         """
         self._stop_event.set()
         if self._thread:
-            # changed to 60 so it won't trigger an edge case where the AI thread finishes after `pdf_path` is written as None in DB.
-            self._thread.join(timeout=60.0)             
+            self._thread.join(timeout=10.0)
         return self._build_result()
 
     def get_status(self) -> dict:
@@ -299,13 +303,6 @@ class ProctoringSession:
         lip_det   = LipMovementDetector()
 
         # FIX 2: per-session FaceMesh — no shared global lock
-        try:
-            import mediapipe as mp
-            _mp_mesh = mp.solutions.face_mesh
-            _MP_OK   = True
-        except ImportError:
-            _MP_OK = False
-
         if not _MP_OK:
             print(f"[Session {self.session_id}] MediaPipe unavailable — stopping.")
             self._state = "stopped"
@@ -353,7 +350,6 @@ class ProctoringSession:
         face_bbox      = None
         lms_cached     = None
         head_away_prev = False
-        face_absent_since = None   # timestamp when face first disappeared
         last_id_check  = 0.0
         fres           = None
         frame_n        = 0
@@ -431,7 +427,6 @@ class ProctoringSession:
                 lms_cached = fres.multi_face_landmarks[0].landmark
 
             if lms_cached is not None:
-                face_absent_since = None   # ← add this line
                 lms   = lms_cached
                 lm_xs = np.array([lm.x for lm in lms]) * fw
                 lm_ys = np.array([lm.y for lm in lms]) * fh
@@ -469,33 +464,13 @@ class ProctoringSession:
                             details=f"lar={lip['lar']:.3f}",
                             cooldown=config.COOLDOWN_LIP,
                             severity=config.SEV["lip_moving"], attention=attn)
+
             else:
-                face_bbox  = None
-                is_alert   = True
-                now_absent = time.time()
-
-                if face_absent_since is None:
-                    face_absent_since = now_absent
-
-                absent_secs = now_absent - face_absent_since
-
-                if absent_secs >= config.FACE_ABSENT_CRIT_SEC:
-                    log.log("EYE/HEAD", "Student has left the exam area",
-                            details=f"Face absent for {int(absent_secs)}s",
-                            frame=frame,
-                            cooldown=60.0,
-                            severity=config.SEV["face_absent_crit"], attention=attn)
-                elif absent_secs >= config.FACE_ABSENT_GONE_SEC:
-                    log.log("EYE/HEAD", "Student may have left the exam",
-                            details=f"Face absent for {int(absent_secs)}s",
-                            frame=frame,
-                            cooldown=30.0,
-                            severity=config.SEV["face_absent_gone"], attention=attn)
-                else:
-                    log.log("EYE/HEAD", "Face not visible",
-                            details=f"Face absent for {int(absent_secs)}s",
-                            cooldown=config.COOLDOWN_NO_FACE,
-                            severity=config.SEV["no_face"], attention=attn)
+                face_bbox = None
+                is_alert  = True
+                log.log("EYE/HEAD", "Face not visible",
+                        cooldown=config.COOLDOWN_NO_FACE,
+                        severity=config.SEV["no_face"], attention=attn)
 
             # ── YOLO ─────────────────────────────────────────
             if frame_n % config.YOLO_EVERY == 0:
@@ -514,15 +489,8 @@ class ProctoringSession:
                         details="Prohibited item in frame",
                         frame=frame,
                         cooldown=config.COOLDOWN_YOLO_ITEM,
-                        severity=config.SEV["phone" if "phone" in item.lower() else "book"],
+                        severity=config.SEV["phone" if "phone" in item else "book"],
                         attention=attn)
-            # Unknown object — one capture per cooldown period, low severity, saved for report
-            if det.unknown_capture is not None:
-                log.log("UNKNOWN", "Unknown object detected",
-                        details="Object not in prohibited list — logged for review",
-                        frame=frame,
-                        cooldown=config.COOLDOWN_UNKNOWN_OBJ,
-                        severity=config.SEV["unknown_object"], attention=attn)
 
             # ── Identity ──────────────────────────────────────
             now_t = time.time()
@@ -624,14 +592,15 @@ class ProctoringSession:
 
         if log.events:
             self._pdf_path = generate(
-                events            = log.events,
-                session_id        = self.session_id,
-                student_name      = self.student_name,
-                start_time        = self._start_time,
-                end_time          = self._end_time,
-                reference_image   = verifier.reference_image,
-                attention_history = list(attn.history),
-                detector_stats    = {
+                events               = log.events,
+                session_id           = self.session_id,
+                student_name         = self.student_name,
+                start_time           = self._start_time,
+                end_time             = self._end_time,
+                reference_image      = verifier.reference_image,
+                attention_history    = list(attn.history),
+                unknown_object_frame = yolo.result.unknown_frame,
+                detector_stats       = {
                     "Head Pose":   {k: final_head.get(k)  for k in ["yaw_dev","pitch_dev","roll_dev","direction"]},
                     "Gaze":        {k: final_gaze.get(k)  for k in ["avg_h","avg_v","direction"]},
                     "Lip":         {k: final_lip.get(k)   for k in ["lar","lip_moving"]},
@@ -686,61 +655,36 @@ class ProctoringSession:
             pass
 
     def _do_enrollment(self, verifier, face_mesh, fh, fw) -> bool:
-        """
-        Guided multi-angle enrollment — V10.0.
-
-        Asks the student to face three angles (frontal, left, right).
-        Collects ID_REF_FRAMES frames per angle = 3 × ID_REF_FRAMES total.
-        Passes all frames to verifier.enroll() which stores all embeddings.
-        Verification later uses best-match (min distance) across all angles.
-        """
-        n_per_angle = config.ID_REF_FRAMES   # e.g. 15 frames per angle
-        angles = [
-            ("Look straight at the camera",  "frontal"),
-            ("Turn slightly to your LEFT",    "left"),
-            ("Turn slightly to your RIGHT",   "right"),
-        ]
-        all_frames = []
-        timeout_per_angle = 20  # seconds max per angle
-
-        for prompt, angle_name in angles:
-            captured = 0
-            deadline = time.time() + timeout_per_angle
-            while (captured < n_per_angle
-                   and time.time() < deadline
-                   and not self._stop_event.is_set()):
-                try:
-                    frame_bytes = self.frame_queue.get(timeout=1.0)
-                except queue.Empty:
-                    continue
-                nparr = np.frombuffer(frame_bytes, np.uint8)
-                frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-                if frame is None:
-                    continue
-                frame = cv2.flip(frame, 1)
-                rgb   = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                fres  = face_mesh.process(rgb)
-                if fres and fres.multi_face_landmarks:
-                    all_frames.append(frame.copy())
-                    captured += 1
-                    # Show enrollment prompt on frame
-                    display = frame.copy()
-                    h, w = display.shape[:2]
-                    cv2.rectangle(display, (0, h-70), (w, h), (30, 30, 30), -1)
-                    cv2.putText(display, f"ENROLLMENT: {prompt}",
-                                (10, h-42), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (0, 220, 60), 2)
-                    cv2.putText(display,
-                                f"Angle {angles.index((prompt, angle_name))+1}/3  "
-                                f"({captured}/{n_per_angle} captured)",
-                                (10, h-14), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (200, 200, 200), 1)
-                    _, buf = cv2.imencode(".jpg", display, [cv2.IMWRITE_JPEG_QUALITY, 70])
-                    with self._lock:
-                        self._last_frame = buf.tobytes()
-                    time.sleep(0.25)
-
-        if not all_frames:
-            return False
-        return verifier.enroll(all_frames)
+        captured, frames = 0, []
+        n       = config.ID_REF_FRAMES
+        timeout = time.time() + 60          # 60-second hard timeout
+        while captured < n and time.time() < timeout and not self._stop_event.is_set():
+            try:
+                frame_bytes = self.frame_queue.get(timeout=1.0)
+            except queue.Empty:
+                continue
+            nparr = np.frombuffer(frame_bytes, np.uint8)
+            frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+            if frame is None:
+                continue
+            frame = cv2.flip(frame, 1)
+            rgb   = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            fres  = face_mesh.process(rgb)
+            if fres and fres.multi_face_landmarks:
+                frames.append(frame.copy())
+                captured += 1
+                self._push_frame(frame, AttentionScore(), 0, calibrating=False)
+                time.sleep(0.35)
+            else:
+                # Show "No face detected" feedback via the live frame stream
+                _fb = frame.copy()
+                cv2.putText(_fb,
+                            f"Enrollment {captured}/{n}  —  No face detected",
+                            (20, 46), cv2.FONT_HERSHEY_SIMPLEX,
+                            0.75, (0, 80, 220), 2)
+                self._push_frame(_fb, AttentionScore(), 0, calibrating=False)
+        # Attempt enroll even if we only got a partial set of frames
+        return verifier.enroll(frames) if frames else False
 
     def _build_result(self) -> dict:
         with self._lock:

@@ -49,7 +49,7 @@ _face_mesh = _mp_mesh.FaceMesh(
 _hud_overlay = None
 
 
-def _draw_hud(frame, attention, head, gaze, lip, glow,
+def _draw_hud(frame, attention, head, gaze, lip,
               if_res, lstm_res, is_alert, calibrated, calib_pct, fps):
     global _hud_overlay
     h, w = frame.shape[:2]
@@ -78,7 +78,6 @@ def _draw_hud(frame, attention, head, gaze, lip, glow,
     ha  = head.get("head_away",     False)
     ga  = gaze.get("gaze_away",     False)
     lm  = lip.get("lip_moving",     False)
-    gld = glow.get("glow_detected", False)
 
     t(f"HEAD  {head.get('direction','?'):8s} "
       f"y={head.get('yaw_dev',0):+5.1f} p={head.get('pitch_dev',0):+5.1f}",
@@ -89,18 +88,15 @@ def _draw_hud(frame, attention, head, gaze, lip, glow,
     t(f"LIP   {'MOVING' if lm else 'still':8s} "
       f"lar={lip.get('lar',0):.3f}",
       102, (0,80,220) if lm  else (170,230,170))
-    t(f"GLOW  {'DETECTED' if gld else 'none':8s} "
-      f"{glow.get('glow_score',0):.3f}",
-      146, (0,80,220) if gld else (170,230,170))
 
     if if_res.get("score") is not None:
         t(f"IFOREST {if_res['score']:+.3f} "
           f"{'ANOMALY' if if_res.get('anomaly') else 'ok'}",
-          168, (0,80,220) if if_res.get("anomaly") else (200,200,200))
+          124, (0,80,220) if if_res.get("anomaly") else (200,200,200))
     if lstm_res.get("mse") is not None:
         t(f"LSTM    {lstm_res['mse']:.4f} "
           f"{'ANOMALY' if lstm_res.get('anomaly') else 'ok'}",
-          188, (0,80,220) if lstm_res.get("anomaly") else (200,200,200))
+          144, (0,80,220) if lstm_res.get("anomaly") else (200,200,200))
 
     if is_alert:
         cv2.rectangle(frame, (0,h-46), (w,h), (0,0,185), -1)
@@ -120,23 +116,29 @@ def _draw_hud(frame, attention, head, gaze, lip, glow,
 def _enrollment(cap, verifier: IdentityVerifier, n: int) -> bool:
     print(f"\n[Enrollment] Look straight at the camera — capturing {n} photos …")
     captured, frames = 0, []
-    while captured < n:
+    timeout = time.time() + 60          # 60-second hard timeout
+    while captured < n and time.time() < timeout:
         ret, frame = cap.read()
         if not ret: break
         frame = cv2.flip(frame, 1)
-        cv2.putText(frame,
-                    f"Enrollment  {captured}/{n}  —  look straight at camera",
-                    (20,46), cv2.FONT_HERSHEY_SIMPLEX, 0.80, (0,220,60), 2)
+        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        has_face = bool(_face_mesh.process(rgb).multi_face_landmarks)
+        if has_face:
+            msg = f"Enrollment  {captured}/{n}  —  look straight at camera"
+            col = (0, 220, 60)
+        else:
+            msg = f"Enrollment  {captured}/{n}  —  No face detected"
+            col = (0, 80, 220)
+        cv2.putText(frame, msg, (20, 46),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.80, col, 2)
         cv2.imshow("AI Proctoring — Enrollment", frame)
         cv2.waitKey(1)
-        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        # Enrollment always uses full frame — no face_bbox yet at this stage
-        if _face_mesh.process(rgb).multi_face_landmarks:
+        if has_face:
             frames.append(frame.copy())
             captured += 1
             time.sleep(0.35)
     cv2.destroyAllWindows()
-    return verifier.enroll(frames)
+    return verifier.enroll(frames) if frames else False
 
 
 class _IdentityWorker:
@@ -249,7 +251,6 @@ def run(student_name: str = "Student", resume_session_id: str = None):
     gaze  = dict(gaze_away=False, direction="CENTER",
                  avg_h=0.5, avg_v=0.5, left_h=0.5, right_h=0.5)
     lip   = dict(lar=0.0, lip_open=False, lip_moving=False)
-    glow  = dict(glow_score=0.0, glow_detected=False)
     face_bbox  = None
     lms_cached = None
 
@@ -357,7 +358,7 @@ def run(student_name: str = "Student", resume_session_id: str = None):
                 calib_pct  = min(100.0, 100 * n_samples / total)
                 if done:
                     print("[Main] Calibration complete — proctoring active.\n")
-            frame = _draw_hud(frame, attn, head, gaze, lip, glow,
+            frame = _draw_hud(frame, attn, head, gaze, lip,
                                if_res, lstm_res, False, False, calib_pct, fps_display)
             cv2.imshow("AI Proctoring System", frame)
             if cv2.waitKey(frame_ms) & 0xFF == 27: break
@@ -494,14 +495,11 @@ def run(student_name: str = "Student", resume_session_id: str = None):
                     cooldown=config.COOLDOWN_ATTN_SYSTEM,
                     severity=0)
 
-        # ── Dataset collection ────────────────────────────────
-        # Build active alert list for labelling (only sources currently firing)
         _active = []
         if lms_cached is not None:
             if head.get("head_away"):   _active.append("EYE/HEAD")
             if gaze.get("gaze_away"):   _active.append("GAZE")
             if lip.get("lip_moving"):   _active.append("LIP")
-            if glow.get("glow_detected"): _active.append("GLOW")
         if det.person_count > 1:        _active.append("YOLO_MULTI")
         # P7 fix: include per-item YOLO detections so dataset frames with
         # phone/book are labelled alert_yolo_phone / alert_yolo_book instead of normal
@@ -512,7 +510,6 @@ def run(student_name: str = "Student", resume_session_id: str = None):
 
         _ds_state = {
             "head": head, "gaze": gaze, "lip": lip,
-            "glow": glow,
             "attention": attn.value,
             "if_score": if_res.get("score"),
             "lstm_mse": lstm_res.get("mse"),
@@ -520,7 +517,7 @@ def run(student_name: str = "Student", resume_session_id: str = None):
         collector.tick(frame, _ds_state, _active)
 
         frame = _draw_hud(frame, attn, head, gaze, lip,
-                          glow, if_res, lstm_res,
+                          if_res, lstm_res,
                           is_alert, True, 100, fps_display)
         cv2.imshow("AI Proctoring System", frame)
         if cv2.waitKey(frame_ms) & 0xFF == 27:
@@ -541,10 +538,6 @@ def run(student_name: str = "Student", resume_session_id: str = None):
         "Head Pose":   {k: head.get(k)    for k in ["yaw_dev","pitch_dev","roll_dev","direction"]},
         "Gaze":        {k: gaze.get(k)    for k in ["avg_h","avg_v","direction"]},
         "Lip":         {k: lip.get(k)     for k in ["lar","lip_moving"]},
-        "Screen Glow": {
-            **{k: glow.get(k) for k in ["glow_score", "glow_detected"]},
-            "signals": glow.get("signals", {}),  # FIX: include 4-signal breakdown for pdf_report
-        },
         "IForest":     {k: if_res.get(k)  for k in ["trained","score","anomaly"]},
         "LSTM AE":     {k: lstm_res.get(k) for k in ["trained","mse","anomaly"]},
         "Identity":    verifier.last_result or {},
@@ -552,14 +545,15 @@ def run(student_name: str = "Student", resume_session_id: str = None):
 
     if log.events:
         generate(
-            events            = log.events,
-            session_id        = session_id,
-            student_name      = student_name,
-            start_time        = start_time,
-            end_time          = end_time,
-            reference_image   = verifier.reference_image,
-            attention_history = attn.history,
-            detector_stats    = detector_stats,
+            events               = log.events,
+            session_id           = session_id,
+            student_name         = student_name,
+            start_time           = start_time,
+            end_time             = end_time,
+            reference_image      = verifier.reference_image,
+            attention_history    = attn.history,
+            detector_stats       = detector_stats,
+            unknown_object_frame = yolo.result.unknown_frame,
         )
     else:
         print("[Main] No events — PDF skipped.")
