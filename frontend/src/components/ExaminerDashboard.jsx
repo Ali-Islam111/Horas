@@ -10,22 +10,23 @@ function ExaminerDashboard({ onNavigate }) {
   const [stats, setStats] = useState({
     totalStudents: 0,
     alertsCount: 0,
+    activeExams: 0,
   });
   const [recentAlerts, setRecentAlerts] = useState([]);
 
   useEffect(() => {
-    // Fetch profile + student count + current session alerts.
+    // Fetch profile + student count + active exams + recent alerts in real time
     const fetchDashboardData = async () => {
       try {
         const token = localStorage.getItem('auth_token');
         if (!token) return;
 
-        const sessionId = localStorage.getItem('current_session_id') || localStorage.getItem('session_id');
         const headers = { Authorization: `Bearer ${token}` };
 
-        const [profileResponse, usersResponse] = await Promise.all([
+        const [profileResponse, usersResponse, submissionsResponse] = await Promise.all([
           fetch(`${API_BASE_URL}/api/users/me`, { headers }),
           fetch(`${API_BASE_URL}/api/users/`, { headers }),
+          fetch(`${API_BASE_URL}/api/sessions/all-submissions`, { headers }),
         ]);
 
         if (profileResponse.ok) {
@@ -39,19 +40,37 @@ function ExaminerDashboard({ onNavigate }) {
           totalStudents = users.filter((user) => user.role === 'student').length;
         }
 
-        let alerts = [];
-        if (sessionId) {
-          try {
-            alerts = await fetchSessionEvents(sessionId);
-          } catch (alertError) {
-            console.error('Failed to fetch session alerts:', alertError);
-          }
+        let activeExams = 0;
+        let allAlerts = [];
+
+        if (submissionsResponse.ok) {
+          const submissions = await submissionsResponse.json();
+          // Active exams are sessions currently in progress
+          activeExams = submissions.filter((s) => s.status === 'in_progress').length;
+
+          // Fetch the events for the 5 most recent sessions to show recent violations
+          const recentSessions = submissions.slice(0, 5);
+          const eventPromises = recentSessions.map(async (s) => {
+            try {
+              return await fetchSessionEvents(s.id);
+            } catch (err) {
+              console.error(`Failed to fetch alerts for session ${s.id}:`, err);
+              return [];
+            }
+          });
+
+          const eventResults = await Promise.all(eventPromises);
+          allAlerts = eventResults.flat();
+
+          // Sort combined alerts by timestamp descending
+          allAlerts.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
         }
 
-        setRecentAlerts(Array.isArray(alerts) ? alerts.slice(0, 4) : []);
+        setRecentAlerts(allAlerts.slice(0, 4));
         setStats({
           totalStudents,
-          alertsCount: Array.isArray(alerts) ? alerts.length : 0,
+          activeExams,
+          alertsCount: allAlerts.length,
         });
       } catch (err) {
         console.error('Failed to fetch dashboard data:', err);
@@ -59,6 +78,8 @@ function ExaminerDashboard({ onNavigate }) {
     };
 
     fetchDashboardData();
+    const pollInterval = setInterval(fetchDashboardData, 4000);
+    return () => clearInterval(pollInterval);
   }, []);
 
   // Mock data for the chart - representing weekly performance
@@ -202,7 +223,7 @@ function ExaminerDashboard({ onNavigate }) {
               </div>
               <h3 className="text-slate-400 text-sm font-semibold">{t('examiner.dashboard.stats.activeExams')}</h3>
             </div>
-            <p className="text-white text-4xl font-bold tracking-tight mb-1">12</p>
+            <p className="text-white text-4xl font-bold tracking-tight mb-1">{stats.activeExams}</p>
             <div className="flex items-center gap-2">
               <span className="relative flex h-2 w-2">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>

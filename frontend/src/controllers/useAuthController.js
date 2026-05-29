@@ -97,9 +97,17 @@ export function useAuthController(onNavigate) {
       const backendRole = role === 'instructor' ? 'teacher' : 'student';
       await AuthService.register(email, fullName, password, backendRole);
       
+      // Auto-login immediately after successful registration
+      const loginData = await AuthService.login(email, password);
+      AuthService.setSession(loginData.access_token, backendRole);
+      
       setRegisterSuccess(true);
       setTimeout(() => {
-        onNavigate('login');
+        if (backendRole === 'teacher') {
+          onNavigate('examiner');
+        } else {
+          onNavigate('dashboard');
+        }
       }, 2000);
     } catch (err) {
       console.error('Registration error:', err);

@@ -5,12 +5,8 @@ import { useLanguage } from '../contexts/LanguageContext'
 import { connectProctoringWS } from '../services/proctoringService'
 import AIInitializingScreen from './AIInitializingScreen'
 
-// ============================================
-// Main Component: ProctoringMonitor
-// ============================================
-function ProctoringMonitor({ onNavigate }) {
+function AIDemoTest({ onNavigate }) {
   const { t, language, toggleLanguage } = useLanguage()
-  const userRole = localStorage.getItem('user_role')
 
   // ── State ──────────────────────────────────────────────────────────────────
   const [wsStatus, setWsStatus]       = useState('connecting') // 'connecting' | 'connected' | 'disconnected'
@@ -20,7 +16,7 @@ function ProctoringMonitor({ onNavigate }) {
   const [error, setError]             = useState(null)
   const [aiState, setAiState]         = useState('waiting')   // 'waiting' | 'initializing' | 'ready'
   const [sessionCompleted, setSessionCompleted] = useState(false)
-  const [studentInfo, setStudentInfo] = useState({ id: '', name: 'Student' })
+  const [showConfirmEnd, setShowConfirmEnd] = useState(false)
 
   // ── Refs ───────────────────────────────────────────────────────────────────
   const videoRef          = useRef(null)
@@ -28,64 +24,20 @@ function ProctoringMonitor({ onNavigate }) {
   const wsRef             = useRef(null)   // { sendFrame, close, ws }
   const frameIntervalRef  = useRef(null)
 
-  // Get session_id stored when the student enrolled, defaulting to 1 for instructor AI testing
-  const sessionId = localStorage.getItem('session_id') || localStorage.getItem('current_session_id') || (userRole === 'teacher' || userRole === 'instructor' || userRole === 'admin' ? '1' : null)
+  // Guest test uses public Session ID 1
+  const sessionId = '1'
 
-  // Helper to fetch and verify if the exam session is completed
+  // Helper to fetch and verify if the exam session is completed (for test session 1)
   const checkSessionStatus = useCallback(async () => {
-    if (!sessionId) return
     try {
-      const token = localStorage.getItem('auth_token')
-      const headers = { Authorization: `Bearer ${token}` }
-      const response = await fetch(`${API_BASE_URL}/api/sessions/all-submissions`, { headers })
+      const response = await fetch(`${API_BASE_URL}/api/sessions/public-report`)
       if (response.ok) {
-        const submissions = await response.json()
-        const currentSession = submissions.find(s => String(s.id) === String(sessionId))
-        if (currentSession && currentSession.status === 'completed') {
-          setSessionCompleted(true)
-          setStudentInfo({
-            id: currentSession.user_id,
-            name: `Student ID: ${currentSession.user_id}`
-          })
-        }
+        setSessionCompleted(true)
       }
     } catch (err) {
       console.error('Failed to check session status:', err)
     }
-  }, [sessionId])
-
-  const handleEndSession = () => {
-    if (window.confirm('Are you sure you want to end this proctoring session? This will stop the AI and generate the final PDF report.')) {
-      if (wsRef.current) {
-        wsRef.current.close()
-      }
-      setWsStatus('disconnected')
-    }
-  }
-
-  const handleDownloadReport = async () => {
-    if (!sessionId) return
-    try {
-      const token = localStorage.getItem('auth_token')
-      const res = await fetch(
-        `${API_BASE_URL}/api/sessions/${sessionId}/report`,
-        { headers: { Authorization: `Bearer ${token}` } }
-      )
-      if (!res.ok) {
-        throw new Error('Report is not ready yet. Please wait 2-3 seconds and try again.')
-      }
-      const blob = await res.blob()
-      const url = window.URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `report_session_${sessionId}.pdf`
-      document.body.appendChild(a)
-      a.click()
-      a.remove()
-    } catch (err) {
-      setError(err.message)
-    }
-  }
+  }, [])
 
   // ============================================
   // Initialize Camera
@@ -113,13 +65,6 @@ function ProctoringMonitor({ onNavigate }) {
   // Connect WebSocket & Start Frame Streaming
   // ============================================
   const startProctoring = useCallback(() => {
-    if (!sessionId) {
-      console.warn('[Proctoring] No session_id found in localStorage — skipping WS connection')
-      setError('No active session found. Please start an exam first.')
-      setWsStatus('disconnected')
-      return
-    }
-
     wsRef.current = connectProctoringWS(sessionId, {
       onOpen: () => {
         setWsStatus('connected')
@@ -139,7 +84,6 @@ function ProctoringMonitor({ onNavigate }) {
       },
 
       onAlert: (alertData) => {
-        // alertData = { type: 'alert', category: string, message: string }
         setLiveAlerts(prev => [{
           id: Date.now(),
           category: alertData.category || 'AI',
@@ -168,12 +112,11 @@ function ProctoringMonitor({ onNavigate }) {
   // ============================================
   useEffect(() => {
     startCamera()
-    checkSessionStatus()
     return () => {
       streamRef.current?.getTracks().forEach(t => t.stop())
       clearInterval(frameIntervalRef.current)
     }
-  }, [checkSessionStatus])
+  }, [])
 
   // Start WebSocket once camera is ready
   useEffect(() => {
@@ -202,20 +145,37 @@ function ProctoringMonitor({ onNavigate }) {
     disconnected: { label: 'Disconnected',      color: 'text-red-400',    dot: 'bg-red-400' },
   }[wsStatus]
 
-  const handleBackNavigation = () => {
-    if (!onNavigate) return
-
-    if (userRole === 'teacher' || userRole === 'admin' || userRole === 'instructor') {
-      onNavigate('examiner')
-      return
-    }
-
-    onNavigate('dashboard')
+  const handleEndSession = () => {
+    setShowConfirmEnd(true)
   }
 
-  // ============================================
-  // Render
-  // ============================================
+  const confirmEndSession = () => {
+    if (wsRef.current) {
+      wsRef.current.close()
+    }
+    setWsStatus('disconnected')
+    setShowConfirmEnd(false)
+  }
+
+  const handleDownloadReport = async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/sessions/public-report`)
+      if (!res.ok) {
+        throw new Error('Report is not ready yet. Please wait 2-3 seconds and try again.')
+      }
+      const blob = await res.blob()
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `public_demo_report.pdf`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+    } catch (err) {
+      setError(err.message)
+    }
+  }
+
   return (
     <div className="min-h-screen bg-[#030014] text-slate-200 overflow-hidden relative selection:bg-purple-500/30">
 
@@ -242,10 +202,8 @@ function ProctoringMonitor({ onNavigate }) {
               </div>
             </div>
             <div>
-              <h1 className="text-white text-xl font-bold tracking-tight">AI Proctoring Monitor</h1>
-              <p className="text-slate-400 text-xs mt-0.5">
-                Session ID: <span className="text-cyan-400 font-mono">{sessionId || 'None'}</span>
-              </p>
+              <h1 className="text-white text-xl font-bold tracking-tight">AI Proctoring Test Demo</h1>
+              <p className="text-slate-400 text-xs mt-0.5">Explore the live AI proctoring intelligence in real-time</p>
             </div>
           </div>
           <div className="flex items-center gap-4">
@@ -260,17 +218,15 @@ function ProctoringMonitor({ onNavigate }) {
             >
               {language === 'en' ? 'عربي' : 'English'}
             </button>
-            {onNavigate && (
-              <button
-                onClick={handleBackNavigation}
-                className="px-5 py-2.5 rounded-xl font-semibold text-sm transition-all duration-300 flex items-center gap-2 border border-white/10 bg-white/5 hover:bg-white/10 hover:border-white/20 text-slate-300 hover:text-white hover:-translate-y-0.5"
-              >
-                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M19 12H5M12 19l-7-7 7-7" />
-                </svg>
-                Back
-              </button>
-            )}
+            <button
+              onClick={() => onNavigate('landing')}
+              className="px-5 py-2.5 rounded-xl font-semibold text-sm transition-all duration-300 flex items-center gap-2 border border-white/10 bg-white/5 hover:bg-white/10 hover:border-white/20 text-slate-300 hover:text-white hover:-translate-y-0.5"
+            >
+              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <path d="M19 12H5M12 19l-7-7 7-7" />
+              </svg>
+              Back to Landing
+            </button>
           </div>
         </div>
       </header>
@@ -284,9 +240,9 @@ function ProctoringMonitor({ onNavigate }) {
             {/* Stats */}
             <div className="grid grid-cols-3 gap-4">
               {[
-                { label: 'Camera', value: cameraStatus, color: cameraStatus === 'Active' ? 'text-emerald-400' : 'text-red-400' },
-                { label: 'AI Engine', value: wsStatus === 'connected' ? 'Online' : wsStatus === 'connecting' ? 'Starting' : 'Offline', color: wsStatus === 'connected' ? 'text-emerald-400' : wsStatus === 'connecting' ? 'text-yellow-400' : 'text-red-400' },
-                { label: 'Alerts', value: liveAlerts.length, color: liveAlerts.length > 0 ? 'text-red-400' : 'text-slate-300' },
+                { label: 'Camera Status', value: cameraStatus, color: cameraStatus === 'Active' ? 'text-emerald-400' : 'text-red-400' },
+                { label: 'AI Proctor Model', value: wsStatus === 'connected' ? 'Online' : wsStatus === 'connecting' ? 'Starting' : 'Offline', color: wsStatus === 'connected' ? 'text-emerald-400' : wsStatus === 'connecting' ? 'text-yellow-400' : 'text-red-400' },
+                { label: 'Test Violations', value: liveAlerts.length, color: liveAlerts.length > 0 ? 'text-red-400' : 'text-slate-300' },
               ].map(s => (
                 <div key={s.label} className="rounded-2xl border border-white/5 bg-white/5 p-4 backdrop-blur-md">
                   <p className="text-slate-400 text-xs font-semibold uppercase tracking-wider mb-1">{s.label}</p>
@@ -312,7 +268,7 @@ function ProctoringMonitor({ onNavigate }) {
                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
                     <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500" />
                   </span>
-                  <span className="text-xs font-bold text-white bg-black/60 px-2 py-0.5 rounded backdrop-blur-sm">LIVE AI</span>
+                  <span className="text-xs font-bold text-white bg-black/60 px-2 py-0.5 rounded backdrop-blur-sm">LIVE AI DEMO</span>
                 </div>
 
                 {/* WS Status overlay */}
@@ -332,7 +288,7 @@ function ProctoringMonitor({ onNavigate }) {
 
               <div className="p-4 bg-slate-950/80 border-t border-white/5">
                 <div className="flex items-center justify-between">
-                  <p className="text-white font-semibold text-sm">Live Camera Feed → AI Engine</p>
+                  <p className="text-white font-semibold text-sm">Demo Live Stream $\rightarrow$ YOLO11 $\&$ Face Calibration</p>
                   <div className="flex gap-3 text-xs text-slate-400">
                     <span className={`flex items-center gap-1 ${cameraStatus === 'Active' ? 'text-emerald-400' : 'text-red-400'}`}>
                       <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M23 7l-7 5 7 5V7z" /><rect x="1" y="5" width="15" height="14" rx="2" /></svg>
@@ -346,30 +302,28 @@ function ProctoringMonitor({ onNavigate }) {
                 </div>
                 {error && <p className="text-red-400 text-xs mt-2 bg-red-500/10 p-2 rounded border border-red-500/20">{error}</p>}
 
-                {(userRole === 'teacher' || userRole === 'instructor' || userRole === 'admin') && (
-                  <div className="mt-4 flex gap-3 border-t border-white/5 pt-4">
-                    {wsStatus === 'connected' && (
-                      <button
-                        type="button"
-                        onClick={handleEndSession}
-                        className="px-5 py-2.5 rounded-xl font-bold text-xs bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 text-red-400 transition-all flex items-center gap-2 hover:-translate-y-0.5 active:scale-95"
-                      >
-                        <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="3" y="3" width="18" height="18" rx="2" ry="2" /></svg>
-                        End Proctoring / AI Test
-                      </button>
-                    )}
-                    {wsStatus === 'disconnected' && (
-                      <button
-                        type="button"
-                        onClick={handleDownloadReport}
-                        className="px-5 py-2.5 rounded-xl font-bold text-xs bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 text-emerald-400 transition-all flex items-center gap-2 hover:-translate-y-0.5 active:scale-95 animate-fade-in-up"
-                      >
-                        <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
-                        Download PDF Report
-                      </button>
-                    )}
-                  </div>
-                )}
+                <div className="mt-4 flex gap-3 border-t border-white/5 pt-4">
+                  {wsStatus === 'connected' && (
+                    <button
+                      type="button"
+                      onClick={handleEndSession}
+                      className="px-5 py-2.5 rounded-xl font-bold text-xs bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 text-red-400 transition-all flex items-center gap-2 hover:-translate-y-0.5 active:scale-95"
+                    >
+                      <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="3" y="3" width="18" height="18" rx="2" ry="2" /></svg>
+                      End AI Demo Test
+                    </button>
+                  )}
+                  {wsStatus === 'disconnected' && (
+                    <button
+                      type="button"
+                      onClick={handleDownloadReport}
+                      className="px-5 py-2.5 rounded-xl font-bold text-xs bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 text-emerald-400 transition-all flex items-center gap-2 hover:-translate-y-0.5 active:scale-95 animate-fade-in-up"
+                    >
+                      <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
+                      Download Proctoring PDF Report
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
           </div>
@@ -380,7 +334,7 @@ function ProctoringMonitor({ onNavigate }) {
               <div className="p-2 rounded-lg bg-orange-500/20 text-orange-400">
                 <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" /><line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" /></svg>
               </div>
-              Live AI Alerts
+              Demo AI Anomaly Alerts
               {liveAlerts.length > 0 && (
                 <span className="ml-auto bg-red-500 text-white text-xs font-bold px-2 py-0.5 rounded-full">{liveAlerts.length}</span>
               )}
@@ -389,18 +343,16 @@ function ProctoringMonitor({ onNavigate }) {
             <div className="rounded-2xl border border-white/5 bg-white/5 backdrop-blur-md overflow-hidden flex flex-col" style={{ maxHeight: '70vh' }}>
               <div className="overflow-y-auto flex-grow p-4 space-y-3">
 
-                {/* Empty state */}
                 {liveAlerts.length === 0 && (
                   <div className="text-center py-12">
                     <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center mx-auto mb-3">
                       <svg className="w-6 h-6 text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" /></svg>
                     </div>
-                    <p className="text-emerald-400 text-sm font-semibold">All Clear</p>
-                    <p className="text-slate-500 text-xs mt-1">No violations detected yet</p>
+                    <p className="text-emerald-400 text-sm font-semibold">Ready to Test</p>
+                    <p className="text-slate-500 text-xs mt-1">Look away from camera, cover camera, or bring multiple people to trigger live warnings!</p>
                   </div>
                 )}
 
-                {/* Alert cards */}
                 {liveAlerts.map((alert) => {
                   const style = getCategoryColor(alert.category)
                   return (
@@ -418,13 +370,12 @@ function ProctoringMonitor({ onNavigate }) {
                 })}
               </div>
 
-              {/* Footer */}
               <div className="bg-slate-950/80 p-4 border-t border-white/5">
                 <div className="flex items-center justify-between text-xs">
-                  <span className="text-slate-400">AI Backend Connection</span>
+                  <span className="text-slate-400">YOLO11 Target Detector</span>
                   <span className={`flex items-center gap-1.5 font-semibold ${wsStatus === 'connected' ? 'text-emerald-400' : 'text-slate-500'}`}>
                     <span className={`w-1.5 h-1.5 rounded-full ${wsStatus === 'connected' ? 'bg-emerald-400' : 'bg-slate-500'}`} />
-                    {wsStatus === 'connected' ? 'Connected & Active' : wsStatus === 'connecting' ? 'Connecting...' : 'Disconnected'}
+                    {wsStatus === 'connected' ? 'Calibrated & Running' : 'Offline'}
                   </span>
                 </div>
               </div>
@@ -432,19 +383,77 @@ function ProctoringMonitor({ onNavigate }) {
           </div>
 
         </div>
+      </main>
+
+      {/* ── Custom Glassmorphic End Test Confirmation Overlay ── */}
+      {showConfirmEnd && (
+        <div className="fixed inset-0 z-[2000] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fade-in-up">
+          <div className="relative w-full max-w-md animate-zoom-in">
+            {/* Ambient Background Glow */}
+            <div className="absolute -inset-1 rounded-3xl bg-gradient-to-br from-red-500/30 via-orange-500/25 to-purple-500/30 blur-xl pointer-events-none" />
+
+            <div className="relative rounded-2xl border border-white/10 bg-slate-950/95 backdrop-blur-2xl overflow-hidden shadow-2xl">
+              <div className="h-[2px] w-full bg-gradient-to-r from-red-500 via-orange-500 to-purple-500" />
+
+              <div className="p-8 text-center">
+                {/* Warning Icon */}
+                <div className="flex justify-center mb-6">
+                  <div className="w-16 h-16 rounded-full bg-red-500/10 border border-red-500/30 flex items-center justify-center text-red-400 animate-pulse">
+                    <svg className="w-8 h-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                      <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                      <line x1="12" y1="9" x2="12" y2="13" />
+                      <line x1="12" y1="17" x2="12.01" y2="17" />
+                    </svg>
+                  </div>
+                </div>
+
+                <h2 className="text-white text-xl font-bold mb-2">
+                  {language === 'ar' ? 'إنهاء جلسة تجربة الذكاء الاصطناعي؟' : 'End AI Test Session?'}
+                </h2>
+                <p className="text-slate-400 text-sm mb-6 leading-relaxed">
+                  {language === 'ar' 
+                    ? 'هل أنت متأكد أنك تريد إنهاء هذه التجربة؟ سيؤدي ذلك إلى إيقاف الذكاء الاصطناعي وإنشاء تقرير PDF النهائي الخاص بك.' 
+                    : 'Are you sure you want to end this AI test? This will stop the AI and generate your final PDF report.'}
+                </p>
+
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <button
+                    onClick={() => setShowConfirmEnd(false)}
+                    className="w-full py-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 text-white font-semibold text-sm transition-all duration-300 hover:-translate-y-0.5 active:scale-[0.98]"
+                  >
+                    {language === 'ar' ? 'إلغاء' : 'Cancel'}
+                  </button>
+
+                  <button
+                    onClick={confirmEndSession}
+                    className="w-full relative group py-3 rounded-xl font-bold text-sm text-white overflow-hidden transition-all duration-300 hover:-translate-y-0.5 active:scale-[0.98] shadow-lg hover:shadow-red-500/20"
+                    style={{ boxShadow: '0 0 20px rgba(239,68,68,0.2)' }}
+                  >
+                    <div className="absolute inset-0 bg-gradient-to-r from-red-600 to-orange-500 opacity-90 group-hover:opacity-100 transition-opacity" />
+                    <span className="relative z-10 flex items-center justify-center gap-2">
+                      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                        <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                      </svg>
+                      {language === 'ar' ? 'إنهاء الجلسة' : 'End Test'}
+                    </span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Exam Session Completed Overlay ── */}
       {sessionCompleted && (
         <div className="fixed inset-0 z-[2000] flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-fade-in-up">
           <div className="relative w-full max-w-md animate-zoom-in">
-            {/* Glow */}
             <div className="absolute -inset-1 rounded-3xl bg-gradient-to-br from-emerald-500/30 via-cyan-500/25 to-purple-500/30 blur-xl pointer-events-none" />
 
             <div className="relative rounded-2xl border border-white/10 bg-slate-950/95 backdrop-blur-2xl overflow-hidden shadow-2xl">
-              {/* Accent bar */}
               <div className="h-[2px] w-full bg-gradient-to-r from-emerald-400 via-cyan-400 to-purple-400" />
 
               <div className="p-8 text-center">
-                {/* Icon */}
                 <div className="flex justify-center mb-6">
                   <div className="w-16 h-16 rounded-full bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400 animate-pulse">
                     <svg className="w-8 h-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
@@ -454,38 +463,33 @@ function ProctoringMonitor({ onNavigate }) {
                   </div>
                 </div>
 
-                {/* Title */}
-                <h2 className="text-white text-xl font-bold mb-2">Exam Session Completed</h2>
+                <h2 className="text-white text-xl font-bold mb-2">AI Test Demo Completed</h2>
                 <p className="text-slate-400 text-sm mb-6 leading-relaxed">
-                  The student has successfully completed and submitted the exam. The AI proctoring report has been generated.
+                  Your proctoring test session is complete! The AI proctoring report has been dynamically created.
                 </p>
 
-                {/* Buttons */}
                 <div className="flex flex-col gap-3">
                   <button
-                    onClick={() => {
-                      localStorage.setItem('report_student_id', String(studentInfo.id));
-                      localStorage.setItem('report_student_name', studentInfo.name);
-                      onNavigate('report');
-                    }}
+                    onClick={handleDownloadReport}
                     className="w-full relative group py-3 rounded-xl font-bold text-sm text-white overflow-hidden transition-all duration-300 hover:-translate-y-0.5 active:scale-[0.98] shadow-lg hover:shadow-emerald-500/20"
                     style={{ boxShadow: '0 0 20px rgba(16,185,129,0.2)' }}
                   >
                     <div className="absolute inset-0 bg-gradient-to-r from-emerald-600 to-teal-500 opacity-90 group-hover:opacity-100 transition-opacity" />
                     <span className="relative z-10 flex items-center justify-center gap-2">
                       <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                        <polyline points="23 6 13.5 15.5 8.5 10.5 1 18" />
-                        <polyline points="17 6 23 6 23 12" />
+                        <polyline points="21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                        <polyline points="7 10 12 15 17 10" />
+                        <line x1="12" y1="15" x2="12" y2="3" />
                       </svg>
-                      View Proctoring Report
+                      Download My PDF Report
                     </span>
                   </button>
 
                   <button
-                    onClick={() => onNavigate('examiner')}
+                    onClick={() => onNavigate('landing')}
                     className="w-full py-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 text-white font-semibold text-sm transition-all duration-300 hover:-translate-y-0.5 active:scale-[0.98]"
                   >
-                    Go to Dashboard
+                    Back to Landing Page
                   </button>
                 </div>
               </div>
@@ -493,9 +497,8 @@ function ProctoringMonitor({ onNavigate }) {
           </div>
         </div>
       )}
-      </main>
     </div>
   )
 }
 
-export default ProctoringMonitor
+export default AIDemoTest

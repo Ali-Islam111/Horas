@@ -169,6 +169,27 @@ def get_my_reports(
     """
     return crud.get_my_reports(db, student_id=current_student.id, skip=skip, limit=limit)
 
+@router.get("/public-report")
+def download_public_report(db: Session = Depends(get_db)):
+    """Public guest only: download report for session 1."""
+    db_session = crud.get_session_by_id(db, session_id=1)
+    if not db_session:
+        raise HTTPException(status_code=404, detail="Public test session not found")
+    if not db_session.report_path:
+        raise HTTPException(status_code=404, detail="Public report has not been generated yet. Please trigger 'End Test' in the demo first.")
+    
+    resolved = os.path.realpath(db_session.report_path)
+    if not resolved.startswith(REPORTS_DIR):
+        raise HTTPException(status_code=403, detail="Invalid report path")
+        
+    filename = os.path.basename(db_session.report_path)
+    return FileResponse(
+        path=resolved,
+        media_type="application/pdf",
+        filename=filename,
+        headers={"Cache-Control": "private, max-age=3600"}
+    )
+
 @router.get("/{session_id}/report")
 def download_session_report(
     session_id: int,

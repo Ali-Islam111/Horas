@@ -215,6 +215,11 @@
   from { width: 0%; }
 }
 
+@keyframes toastProgress {
+  from { transform: scaleX(1); }
+  to { transform: scaleX(0); }
+}
+
 /* ── Nav Tab Magnetic Snap + Halo Ring ──────────────────────────── */
 
 /* 1 — Magnetic snap: climbs from below with springy overshoot */

@@ -10,7 +10,7 @@ const translations = {
             horusMeans: 'Horus means that eye that sees everything',
             heroDesc: 'Advanced AI proctoring that preserves exam integrity while respecting student privacy. Ensuring fair testing environments everywhere.',
             startTrial: 'Start Free Trial',
-            watchDemo: 'Watch Demo',
+            watchDemo: 'Test AI Demo',
             stats: {
                 accuracy: 'Detection Accuracy',
                 secured: 'Exams Secured',
@@ -678,7 +678,7 @@ const translations = {
             horusMeans: '"حورس تعني العين التي ترى كل شيء"',
             heroDesc: 'أحدث ثورة في عملية الامتحانات باستخدام المراقبة بالذكاء الاصطناعي. تحليل السلوك، والمسح الذكي للبيئة، ونزاهة لا تقبل المساومة.',
             startTrial: 'ابدأ التجربة المجانية',
-            watchDemo: 'شاهد العرض',
+            watchDemo: 'تجربة المراقبة بالذكاء الاصطناعي',
             stats: {
                 accuracy: 'دقة الكشف',
                 secured: 'امتحانات مؤمنة',

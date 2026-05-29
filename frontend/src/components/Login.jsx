@@ -8,6 +8,11 @@ import AuthService from '../services/authService'
 function Login({ onNavigate }) {
   const { t, language, toggleLanguage } = useLanguage()
   const { state, actions } = useAuthController(onNavigate)
+
+  // Clear stale session on mount
+  React.useEffect(() => {
+    AuthService.clearSession();
+  }, []);
   
   // Destructure state for easy access in the template
   const { email, password, role, isTransitioning, isLoading, loginError } = state;

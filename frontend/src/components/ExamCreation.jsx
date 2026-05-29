@@ -3,9 +3,11 @@ import { useState } from 'react'
 import { useExamCreation } from '../hooks/useExamCreation'
 import logo from '../../assets/Untitled (1).png'
 import { useLanguage } from '../contexts/LanguageContext'
+import { useToast } from '../contexts/ToastContext'
 
 function ExamCreation({ onNavigate }) {
   const { t, language, toggleLanguage } = useLanguage()
+  const { showToast } = useToast()
 
   // Controller: Business logic from custom hook
   const {
@@ -95,9 +97,22 @@ function ExamCreation({ onNavigate }) {
 
   // UI Actions (delegated to controller)
   const handleCreateExam = async () => {
-    const success = await handleSubmit()
-    if (success) {
-      onNavigate('examiner')
+    try {
+      const success = await handleSubmit()
+      if (success) {
+        showToast(
+          language === 'ar' ? 'تم إنشاء الاختبار ونشره بنجاح!' : 'Exam created and published successfully!',
+          'success'
+        )
+        onNavigate('examiner')
+      } else {
+        showToast(
+          language === 'ar' ? 'فشل إنشاء الاختبار. يرجى مراجعة الأسئلة والمدخلات.' : 'Failed to create exam. Please review questions and inputs.',
+          'error'
+        )
+      }
+    } catch (err) {
+      showToast(err.message || 'An error occurred while publishing the exam.', 'error')
     }
   }
 

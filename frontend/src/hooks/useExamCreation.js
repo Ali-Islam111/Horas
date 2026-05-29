@@ -272,21 +272,17 @@ export const useExamCreation = () => {
     // Validate exam data
     const validation = examService.validateExam(examData);
     if (!validation.isValid) {
-      alert('Please fix the following errors:\n' + validation.errors.join('\n'));
-      return;
+      throw new Error('Please fix the following errors:\n' + validation.errors.join('\n'));
     }
 
     try {
       const newExam = await examService.createExam(examData);
-
-      alert('Exam created successfully!');
       // Reset form
       resetForm();
       return true;
     } catch (error) {
-      alert(`Failed to create exam: ${error.message}`);
       console.error('Exam creation error:', error);
-      return false;
+      throw error;
     }
   };
 

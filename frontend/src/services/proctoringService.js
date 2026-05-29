@@ -36,6 +36,10 @@ export function connectProctoringWS(sessionId, { onAlert, onReady, onOpen, onClo
   const ws = new WebSocket(url)
   ws.binaryType = 'arraybuffer'
 
+  // Persistent canvas element for this session to prevent garbage collection pauses
+  const canvas = document.createElement('canvas')
+  const ctx = canvas.getContext('2d')
+
   ws.onopen = () => {
     console.log(`[ProctoringService] ✅ WebSocket open for session ${sessionId}`)
     onOpen?.()
@@ -72,14 +76,16 @@ export function connectProctoringWS(sessionId, { onAlert, onReady, onOpen, onClo
    * @param {number}           quality  - JPEG quality 0–1 (default 0.7)
    */
   const sendFrame = (videoElement, quality = 0.7) => {
-    if (!videoElement || ws.readyState !== WebSocket.OPEN) return
+    if (!videoElement || ws.readyState !== WebSocket.OPEN || !ctx) return
 
-    const canvas = document.createElement('canvas')
-    canvas.width  = videoElement.videoWidth  || 640
-    canvas.height = videoElement.videoHeight || 480
+    const width = videoElement.videoWidth  || 640
+    const height = videoElement.videoHeight || 480
 
-    const ctx = canvas.getContext('2d')
-    ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height)
+    // Only update canvas dimensions if they changed, to avoid resetting context
+    if (canvas.width !== width) canvas.width = width
+    if (canvas.height !== height) canvas.height = height
+
+    ctx.drawImage(videoElement, 0, 0, width, height)
 
     canvas.toBlob((blob) => {
       if (!blob || ws.readyState !== WebSocket.OPEN) return

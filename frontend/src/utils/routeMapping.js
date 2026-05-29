@@ -33,6 +33,8 @@ const pageRoutes = {
   '/proctoring': 'proctoringMonitor',
   '/proctoring-monitor': 'proctoringMonitor',
   '/proctoringMonitor': 'proctoringMonitor',
+  '/demo-test': 'demoTest',
+  '/demoTest': 'demoTest',
 }
 
 const pageToRoute = {
@@ -51,6 +53,7 @@ const pageToRoute = {
   examinerSettings: '/examiner/settings',
   examSubmission: '/exam/submission',
   proctoringMonitor: '/proctoring',
+  demoTest: '/demo-test',
 }
 
 /**

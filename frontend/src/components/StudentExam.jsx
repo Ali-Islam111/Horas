@@ -2,10 +2,12 @@ import { useState, useEffect, useRef } from 'react'
 import logo from '../../assets/Untitled (1).png'
 import { useLanguage } from '../contexts/LanguageContext'
 import { connectProctoringWS } from '../services/proctoringService'
+import { useToast } from '../contexts/ToastContext'
 import AIInitializingScreen from './AIInitializingScreen'
 
 function StudentExam({ onNavigate, examController }) {
   const { t, language, toggleLanguage } = useLanguage()
+  const { showToast } = useToast()
   const { state, actions } = examController
   const { questions, currentExam, session, answers, isLoading } = state
   const { handleAnswer, handleSubmitExam } = actions
@@ -99,9 +101,9 @@ function StudentExam({ onNavigate, examController }) {
         setCameraStatus('inactive')
 
         if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-          alert('⚠️ Camera permission denied! Please allow camera access in your browser settings and refresh the page.')
+          showToast('Camera permission denied! Please allow camera access in your browser settings and refresh the page.', 'error');
         } else if (err.name === 'NotFoundError') {
-          alert('⚠️ No camera found! Please connect a camera and refresh the page.')
+          showToast('No camera found! Please connect a camera and refresh the page.', 'warning');
         }
       }
 
@@ -116,9 +118,9 @@ function StudentExam({ onNavigate, examController }) {
         setMicrophoneStatus('inactive')
 
         if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-          alert('⚠️ Microphone permission denied! Please allow microphone access in your browser settings and refresh the page.')
+          showToast('Microphone permission denied! Please allow microphone access in your browser settings and refresh the page.', 'error');
         } else if (err.name === 'NotFoundError') {
-          alert('⚠️ No microphone found! Please connect a microphone and refresh the page.')
+          showToast('No microphone found! Please connect a microphone and refresh the page.', 'warning');
         }
       }
 
@@ -240,7 +242,7 @@ function StudentExam({ onNavigate, examController }) {
         onNavigate('examSubmission')
       }
     } catch (submitError) {
-      alert(submitError?.message || 'Failed to submit exam. Please try again.')
+      showToast(submitError?.message || 'Failed to submit exam. Please try again.', 'error');
     }
   }
 
@@ -561,7 +563,7 @@ function StudentExam({ onNavigate, examController }) {
                   onClick={() => setCurrentQuestion(i + 1)}
                   className={`w-10 h-10 rounded-lg flex items-center justify-center text-xs font-bold transition-all duration-300 border ${currentQuestion === i + 1
                     ? 'bg-cyan-500 text-slate-950 border-cyan-400 shadow-[0_0_10px_rgba(6,182,212,0.5)]'
-                    : i < answeredCount
+                    : (questions[i] && answers[String(questions[i].id)])
                       ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
                       : 'bg-white/5 text-slate-400 border-white/10 hover:bg-white/10 hover:border-white/20'
                     }`}

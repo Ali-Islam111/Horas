@@ -172,7 +172,7 @@ export default function LandingPage({ onNavigate }) {
               </svg>
             </button>
             <button
-              onClick={() => onNavigate('login')}
+              onClick={() => onNavigate('demoTest')}
               className="px-8 py-4 rounded-full border border-white/10 bg-white/5 hover:bg-white/10 backdrop-blur-md font-semibold text-lg transition-all duration-300 hover:border-white/20 flex items-center justify-center"
             >
               {t('landing.watchDemo')}
