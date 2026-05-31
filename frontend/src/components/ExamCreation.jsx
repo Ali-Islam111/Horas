@@ -50,6 +50,7 @@ function ExamCreation({ onNavigate }) {
   const [showAddQuestion, setShowAddQuestion] = useState(false)
   const [editingQuestionId, setEditingQuestionId] = useState(null)
   const [showConfirmClear, setShowConfirmClear] = useState(false)
+  const [showFormatGuide, setShowFormatGuide] = useState(false)
   const [currentQuestion, setCurrentQuestion] = useState({
     type: 'mcq',
     question: '',
@@ -342,6 +343,59 @@ function ExamCreation({ onNavigate }) {
 
                 {/* Deterministic File Upload & Extraction */}
                 <div className="pt-6 mt-6 border-t border-white/10 block">
+
+                  {/* ── Format Guide Toggle ─────────────────────────────── */}
+                  <div className="mb-4">
+                    <button
+                      onClick={() => setShowFormatGuide(prev => !prev)}
+                      className={`w-full flex items-center justify-between px-4 py-3 rounded-xl border border-amber-500/20 bg-amber-500/5 hover:bg-amber-500/10 hover:border-amber-500/30 transition-all text-amber-400 ${language === 'ar' ? 'flex-row-reverse' : ''}`}
+                    >
+                      <div className={`flex items-center gap-2 ${language === 'ar' ? 'flex-row-reverse' : ''}`}>
+                        <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <line x1="8" y1="6" x2="21" y2="6" /><line x1="8" y1="12" x2="21" y2="12" />
+                          <line x1="8" y1="18" x2="21" y2="18" /><line x1="3" y1="6" x2="3.01" y2="6" />
+                          <line x1="3" y1="12" x2="3.01" y2="12" /><line x1="3" y1="18" x2="3.01" y2="18" />
+                        </svg>
+                        <span className="text-xs font-bold tracking-widest uppercase">
+                          {language === 'ar' ? 'دليل التنسيق' : 'Format Guide'}
+                        </span>
+                      </div>
+                      <svg
+                        className={`w-4 h-4 shrink-0 transition-transform duration-300 ${showFormatGuide ? 'rotate-180' : ''}`}
+                        viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+                      >
+                        <polyline points="6 9 12 15 18 9" />
+                      </svg>
+                    </button>
+
+                    {showFormatGuide && (
+                      <div className="mt-2 px-4 py-4 rounded-xl border border-amber-500/15 bg-amber-500/5 space-y-3 animate-fade-in-up">
+                        <div className={`flex items-start gap-3 ${language === 'ar' ? 'flex-row-reverse text-right' : ''}`}>
+                          <span className="text-amber-400 mt-0.5 shrink-0">✦</span>
+                          <p className="text-slate-300 text-xs leading-relaxed">
+                            <span className="text-white font-semibold">{language === 'ar' ? 'اختيار من متعدد فقط: ' : 'MCQs Only: '}</span>
+                            {language === 'ar' ? 'يجب أن تحتوي كل سؤال على 4 خيارات بالضبط.' : 'Questions must have exactly 4 choices.'}
+                          </p>
+                        </div>
+                        <div className={`flex items-start gap-3 ${language === 'ar' ? 'flex-row-reverse text-right' : ''}`}>
+                          <span className="text-amber-400 mt-0.5 shrink-0">✦</span>
+                          <p className="text-slate-300 text-xs leading-relaxed">
+                            <span className="text-white font-semibold">{language === 'ar' ? 'خيار واحد في كل سطر: ' : 'One Choice Per Line: '}</span>
+                            {language === 'ar' ? 'ضع خياراتك رأسيًا. التخطيطات الأفقية غير مدعومة.' : 'Vertically stack your choices. Horizontal layouts are not supported.'}
+                          </p>
+                        </div>
+                        <div className={`flex items-start gap-3 ${language === 'ar' ? 'flex-row-reverse text-right' : ''}`}>
+                          <span className="text-amber-400 mt-0.5 shrink-0">✦</span>
+                          <p className="text-slate-300 text-xs leading-relaxed">
+                            <span className="text-white font-semibold">{language === 'ar' ? 'غمّق الإجابة: ' : 'Bold the Answer: '}</span>
+                            {language === 'ar' ? 'يجب أن يكون الخيار الصحيح بخط عريض للكشف التلقائي.' : 'The correct option must be bolded for auto-detection.'}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  {/* ── End Format Guide ────────────────────────────────── */}
+
                   {!stagedFile ? (
                     <div>
                       <label className="cursor-pointer">
@@ -506,11 +560,14 @@ function ExamCreation({ onNavigate }) {
                   <div className="space-y-4">
                     {questions.map((q, index) => {
                       const isMissingAnswer = q.correctAnswerIndex === null;
+                      const hasInsufficientChoices = q.options.length < 4;
                       return (
                         <div key={q.id} className={`border rounded-xl p-5 transition group ${
-                          isMissingAnswer 
-                            ? 'border-amber-500/50 bg-amber-500/5 hover:border-amber-500/70' 
-                            : 'bg-slate-950/40 border-white/10 hover:border-white/20'
+                          hasInsufficientChoices
+                            ? 'border-red-500/50 bg-red-500/5 hover:border-red-500/70'
+                            : isMissingAnswer
+                              ? 'border-amber-500/50 bg-amber-500/5 hover:border-amber-500/70'
+                              : 'bg-slate-950/40 border-white/10 hover:border-white/20'
                         }`}>
                           <div className={`flex items-start justify-between gap-4 ${language === 'ar' ? 'flex-row-reverse text-right' : ''}`}>
                             <div className="flex-1">
@@ -523,6 +580,11 @@ function ExamCreation({ onNavigate }) {
                                 {isMissingAnswer && (
                                   <span className="bg-amber-500/15 border border-amber-500/30 text-amber-400 px-3 py-1 rounded text-[10px] font-bold tracking-widest uppercase animate-pulse">
                                     ⚠ {language === 'ar' ? 'إجابة مفقودة' : 'Missing Answer'}
+                                  </span>
+                                )}
+                                {hasInsufficientChoices && (
+                                  <span className="bg-red-500/15 border border-red-500/30 text-red-400 px-3 py-1 rounded text-[10px] font-bold tracking-widest uppercase animate-pulse">
+                                    ⚠ {language === 'ar' ? 'خيارات ناقصة' : 'Incomplete Choices'}
                                   </span>
                                 )}
                               </div>
@@ -615,7 +677,12 @@ function ExamCreation({ onNavigate }) {
                     </button>
                     <button
                       onClick={nextStep}
-                      disabled={questions.length === 0 || assignedMarks !== parseInt(totalMarks)}
+                      disabled={
+                        questions.length === 0 ||
+                        assignedMarks !== parseInt(totalMarks) ||
+                        questions.some(q => q.options.length < 4) ||
+                        questions.some(q => q.correctAnswerIndex === null)
+                      }
                       className={`px-8 py-3 rounded-xl font-bold text-white transition-all duration-300 shadow-[0_0_20px_rgba(6,182,212,0.3)] hover:shadow-[0_0_30px_rgba(6,182,212,0.5)] bg-gradient-to-r from-cyan-600 to-purple-600 flex items-center gap-2 hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed ${language === 'ar' ? 'flex-row-reverse' : ''}`}
                     >
                       <span>{language === 'ar' ? 'التالي' : 'Next Step'}</span>

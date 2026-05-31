@@ -110,6 +110,8 @@ export const useExamCreation = () => {
         errors.questions = 'At least one question is required';
       } else if (assignedMarks !== parseInt(totalMarks)) {
         errors.questions = `Assigned marks (${assignedMarks}) must equal total marks (${totalMarks})`;
+      } else if (questions.some(q => q.options.length < 4)) {
+        errors.questions = 'Some questions have fewer than 4 choices. Please fix your document and re-upload.';
       } else if (questions.some(q => q.correctAnswerIndex === null)) {
         errors.questions = 'All questions must have a correct answer selected before proceeding.';
       }
