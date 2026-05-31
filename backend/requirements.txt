@@ -102,3 +102,7 @@ reportlab>=4.0.0
 #   pip install "protobuf>=4.25.0,<5.0.0" google-auth>=2.15.0 tqdm
 google-generativeai==0.8.3
 protobuf>=4.25.0,<5.0.0       # shared by google-generativeai AND tensorflow — keep in this range
+
+# Document and PDF parsing
+pymupdf>=1.24.0
+python-docx>=1.1.0

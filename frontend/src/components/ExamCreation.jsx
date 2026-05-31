@@ -19,18 +19,14 @@ function ExamCreation({ onNavigate }) {
     totalMarks,
     passingMarks,
     questions,
-    uploadedFile,
-    selectedModel,
-    parsedData,
+    stagedFile,
     isParsingFile,
     parseError,
-    geminiApiKey,
     currentStep,
     stepErrors,
     assignedMarks,
 
     // Actions
-    updateGeminiApiKey,
     nextStep,
     prevStep,
     setExamTitle,
@@ -39,16 +35,21 @@ function ExamCreation({ onNavigate }) {
     setDuration,
     setTotalMarks,
     setPassingMarks,
-    handleFileUpload,
-    loadQuestionsFromModel,
+    handleFileStage,
+    handleAbortUpload,
+    handleExtractQuestions,
     addQuestion,
     deleteQuestion,
+    replaceQuestion,
+    clearQuestions,
     handleSubmit,
     resetForm,
   } = useExamCreation()
 
   // Local UI state
   const [showAddQuestion, setShowAddQuestion] = useState(false)
+  const [editingQuestionId, setEditingQuestionId] = useState(null)
+  const [showConfirmClear, setShowConfirmClear] = useState(false)
   const [currentQuestion, setCurrentQuestion] = useState({
     type: 'mcq',
     question: '',
@@ -76,16 +77,13 @@ function ExamCreation({ onNavigate }) {
         correctAnswerIndex: currentQuestion.correctAnswerIndex,
       }
 
-      addQuestion(preparedQuestion)
-      setCurrentQuestion({
-        type: 'mcq',
-        question: '',
-        marks: '',
-        options: ['', '', '', ''],
-        correctAnswer: '',
-        correctAnswerIndex: null
-      })
-      setShowAddQuestion(false)
+      if (editingQuestionId) {
+        replaceQuestion(editingQuestionId, preparedQuestion)
+      } else {
+        addQuestion(preparedQuestion)
+      }
+
+      closeQuestionModal()
     }
   }
 
@@ -93,6 +91,42 @@ function ExamCreation({ onNavigate }) {
     const newOptions = [...currentQuestion.options]
     newOptions[index] = value
     setCurrentQuestion({ ...currentQuestion, options: newOptions })
+  }
+
+  const handleEditQuestion = (q) => {
+    setEditingQuestionId(q.id)
+    setCurrentQuestion({
+      type: q.type || 'mcq',
+      question: q.question || '',
+      marks: String(q.marks || 1),
+      options: q.options || ['', '', '', ''],
+      correctAnswer: q.correctAnswer || '',
+      correctAnswerIndex: q.correctAnswerIndex
+    })
+    setShowAddQuestion(true)
+  }
+
+  const closeQuestionModal = () => {
+    setShowAddQuestion(false)
+    setEditingQuestionId(null)
+    setCurrentQuestion({
+      type: 'mcq',
+      question: '',
+      marks: '',
+      options: ['', '', '', ''],
+      correctAnswer: '',
+      correctAnswerIndex: null
+    })
+  }
+
+  const handleClearAllQuestions = () => {
+    setShowConfirmClear(true)
+  }
+
+  const confirmClearAllQuestions = () => {
+    clearQuestions()
+    setShowConfirmClear(false)
+    showToast(language === 'ar' ? 'تم مسح جميع الأسئلة بنجاح.' : 'All questions cleared successfully.', 'info')
   }
 
   // UI Actions (delegated to controller)
@@ -306,159 +340,99 @@ function ExamCreation({ onNavigate }) {
             {currentStep === 2 && (
               <div className="space-y-6">
 
-                {/* AI / File Upload Section */}
+                {/* Deterministic File Upload & Extraction */}
                 <div className="pt-6 mt-6 border-t border-white/10 block">
-                  <div className={`flex items-center justify-between xl:flex-row flex-col gap-4 mb-4 ${language === 'ar' ? 'xl:flex-row-reverse' : ''}`}>
-                    <label className={`block text-slate-300 text-xs font-semibold uppercase tracking-wide w-full ${language === 'ar' ? 'text-right' : ''}`}>
-                      {language === 'ar' ? 'استخراج الأسئلة بالذكاء الاصطناعي (اختياري)' : 'AI Question Extraction (Optional)'}
-                    </label>
-                    <div className="bg-purple-500/10 border border-purple-500/30 rounded-lg px-3 py-1.5 flex items-center gap-2 self-start xl:self-auto shrink-0 shadow-[0_0_10px_rgba(168,85,247,0.2)]">
-                      <svg className="w-4 h-4 text-purple-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
-                      </svg>
-                      <span className="text-purple-300 text-[10px] font-bold tracking-widest uppercase">Powered by Gemini</span>
-                    </div>
-                  </div>
-
-                  <div className={`mb-5 p-4 bg-purple-500/5 border border-purple-500/20 rounded-xl ${language === 'ar' ? 'text-right' : ''}`}>
-                    <p className="text-slate-300 text-sm mb-3">
-                      {language === 'ar'
-                        ? 'قم بتحميل ملف PDF أو Word لاستخراج الأسئلة تلقائيًا باستخدام نموذج Google Gemini.'
-                        : 'Upload a PDF or Word document to automatically extract questions using Google Gemini AI.'}
-                    </p>
-                    <div className="relative">
-                      <div className={`absolute inset-y-0 ${language === 'ar' ? 'right-0 pr-3' : 'left-0 pl-3'} flex items-center pointer-events-none`}>
-                        <svg className="w-4 h-4 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
-                          <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
-                        </svg>
-                      </div>
-                      <input
-                        type="password"
-                        value={geminiApiKey}
-                        onChange={(e) => updateGeminiApiKey(e.target.value)}
-                        placeholder={language === 'ar' ? 'مفتاح Google Gemini API Key' : 'Google Gemini API Key'}
-                        className={`w-full py-2.5 rounded-lg bg-slate-900 border border-white/10 text-white placeholder-slate-500 text-sm focus:outline-none focus:ring-1 focus:ring-purple-500/50 focus:border-purple-500/50 transition-all ${language === 'ar' ? 'pr-9 pl-3 text-right rtl' : 'pl-9 pr-3'}`}
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {!uploadedFile ? (
-                  <div>
-                    <label className="cursor-pointer">
-                      <div className="border border-dashed border-cyan-500/30 rounded-xl p-8 hover:bg-cyan-500/5 hover:border-cyan-500/50 transition-all text-center group bg-slate-950/30">
-                        {isParsingFile ? (
-                          <>
-                            <svg className="w-12 h-12 mx-auto mb-3 animate-spin text-cyan-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                              <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+                  {!stagedFile ? (
+                    <div>
+                      <label className="cursor-pointer">
+                        <div className="border border-dashed border-cyan-500/30 rounded-xl p-8 hover:bg-cyan-500/5 hover:border-cyan-500/50 transition-all text-center group bg-slate-950/30">
+                          <div className="w-16 h-16 rounded-2xl bg-cyan-500/10 text-cyan-400 mx-auto flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                            <svg className="w-8 h-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                              <polyline points="17 8 12 3 7 8" />
+                              <line x1="12" y1="3" x2="12" y2="15" />
                             </svg>
-                            <p className="text-sm font-semibold mb-1 text-cyan-400 tracking-wide">
-                              {t('examiner.examCreation.upload.parsing')}
-                            </p>
-                            <p className="text-slate-400 text-xs">
-                              {t('examiner.examCreation.upload.extracting')}
-                            </p>
-                          </>
-                        ) : (
-                          <>
-                            <div className="w-16 h-16 rounded-2xl bg-cyan-500/10 text-cyan-400 mx-auto flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
-                              <svg className="w-8 h-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                                <polyline points="17 8 12 3 7 8" />
-                                <line x1="12" y1="3" x2="12" y2="15" />
-                              </svg>
-                            </div>
-                            <p className="text-slate-300 text-sm font-semibold mb-2">
-                              {t('examiner.examCreation.upload.clickToUpload')}
-                            </p>
-                            <p className="text-slate-500 text-xs">
-                              {t('examiner.examCreation.upload.formats')}
-                            </p>
-                          </>
-                        )}
-                      </div>
-                      <input
-                        type="file"
-                        accept=".pdf,.doc,.docx"
-                        onChange={handleFileUpload}
-                        className="hidden"
-                        disabled={isParsingFile}
-                      />
-                    </label>
-
-                    {parseError && (
-                      <div className="mt-4 bg-red-500/10 border border-red-500/30 rounded-xl p-4 flex items-center gap-3">
-                        <svg className="w-5 h-5 text-red-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                          <circle cx="12" cy="12" r="10" />
-                          <line x1="12" y1="8" x2="12" y2="12" />
-                          <line x1="12" y1="16" x2="12.01" y2="16" />
-                        </svg>
-                        <p className="text-red-300 text-sm font-medium">
-                          {parseError}
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <div className="space-y-4 shadow-lg">
-                    <div className={`bg-slate-950/40 border border-white/10 rounded-xl p-4 flex items-center justify-between ${language === 'ar' ? 'flex-row-reverse' : ''}`}>
-                      <div className={`flex items-center gap-4 ${language === 'ar' ? 'flex-row-reverse text-right' : ''}`}>
-                        <div className="w-12 h-12 rounded-xl bg-cyan-500/20 text-cyan-400 flex items-center justify-center border border-cyan-500/30">
-                          <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                            <polyline points="14 2 14 8 20 8" />
-                          </svg>
-                        </div>
-                        <div>
-                          <p className="text-white text-sm font-bold tracking-tight">{uploadedFile.name}</p>
-                          <p className="text-slate-400 text-xs mt-1 font-medium">
-                            {(uploadedFile.size / 1024).toFixed(2)} KB
-                            {parsedData && <span className="text-cyan-400"> • {parsedData.models?.A?.length || 0} questions extracted</span>}
+                          </div>
+                          <p className="text-slate-300 text-sm font-semibold mb-2">
+                            {language === 'ar' ? 'انقر لتحميل ملف الامتحان' : 'Click to upload exam file'}
+                          </p>
+                          <p className="text-slate-500 text-xs">
+                            {language === 'ar'
+                              ? 'PDF, DOC, or DOCX • حدد الإجابة الصحيحة بالخط العريض (Bold) في مستندك'
+                              : 'PDF, DOC, or DOCX • Bold the correct answer in your document'}
                           </p>
                         </div>
-                      </div>
-                      <button
-                        onClick={resetForm}
-                        className="w-10 h-10 rounded-xl flex items-center justify-center bg-red-500/10 text-red-400 border border-red-500/30 hover:bg-red-500/20 transition-colors"
-                      >
-                        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                          <polyline points="3 6 5 6 21 6" />
-                          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                        </svg>
-                      </button>
+                        <input
+                          type="file"
+                          accept=".pdf,.doc,.docx"
+                          onChange={handleFileStage}
+                          className="hidden"
+                          disabled={isParsingFile}
+                        />
+                      </label>
                     </div>
-
-                    {parsedData && (
-                      <div className="bg-white/5 border border-white/20 rounded-lg p-4">
-                        <p className="text-white/70 text-xs font-semibold mb-3">Select Exam Model:</p>
-                        <div className="grid grid-cols-4 gap-2">
-                          {['A', 'B', 'C', 'D'].map((model) => (
-                            <button
-                              key={model}
-                              onClick={() => loadQuestionsFromModel(model)}
-                              className="py-2 px-4 rounded-lg font-bold text-sm transition"
-                              style={selectedModel === model
-                                ? { background: '#38BDF8', color: '#E0F2FE' }
-                                : { background: 'rgba(255, 255, 255, 0.1)', color: 'rgba(255, 255, 255, 0.7)' }}
-                              onMouseEnter={(e) => {
-                                if (selectedModel !== model) e.currentTarget.style.background = 'rgba(255, 255, 255, 0.2)'
-                              }}
-                              onMouseLeave={(e) => {
-                                if (selectedModel !== model) e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)'
-                              }}
-                            >
-                              Model {model}
-                            </button>
-                          ))}
+                  ) : (
+                    <div className="space-y-4 shadow-lg">
+                      <div className={`bg-slate-950/40 border border-white/10 rounded-xl p-4 flex items-center justify-between ${language === 'ar' ? 'flex-row-reverse' : ''}`}>
+                        <div className={`flex items-center gap-4 ${language === 'ar' ? 'flex-row-reverse text-right' : ''}`}>
+                          <div className="w-12 h-12 rounded-xl bg-cyan-500/20 text-cyan-400 flex items-center justify-center border border-cyan-500/30">
+                            <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                              <polyline points="14 2 14 8 20 8" />
+                            </svg>
+                          </div>
+                          <div>
+                            <p className="text-white text-sm font-bold tracking-tight">{stagedFile.name}</p>
+                            <p className="text-slate-400 text-xs mt-1 font-medium">
+                              {(stagedFile.size / 1024).toFixed(2)} KB
+                            </p>
+                          </div>
                         </div>
-                        <p className="text-white/50 text-xs mt-3">
-                          All models contain the same questions in different order
-                        </p>
+
+                        <div className="flex items-center gap-3">
+                          {isParsingFile ? (
+                            <div className="flex items-center gap-2 px-4 py-2 rounded-lg bg-cyan-500/10 text-cyan-400 font-semibold text-xs border border-cyan-500/20">
+                              <svg className="w-4 h-4 animate-spin text-cyan-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                                <circle cx="12" cy="12" r="10" />
+                                <path d="M22 12a10 10 0 0 1-10 10" />
+                              </svg>
+                              <span>{language === 'ar' ? 'جاري الاستخراج...' : 'Extracting...'}</span>
+                            </div>
+                          ) : (
+                            <>
+                              <button
+                                onClick={handleAbortUpload}
+                                className="px-4 py-2 rounded-lg text-xs font-semibold bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 transition-all"
+                              >
+                                {language === 'ar' ? 'إلغاء' : 'Abort'}
+                              </button>
+                              <button
+                                onClick={() => handleExtractQuestions(showToast, t, language)}
+                                disabled={parseError !== ''}
+                                className="px-4 py-2 rounded-lg text-xs font-bold bg-gradient-to-r from-cyan-600 to-purple-600 text-white shadow-lg hover:shadow-cyan-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                              >
+                                {language === 'ar' ? 'استخراج الأسئلة' : 'Extract Questions'}
+                              </button>
+                            </>
+                          )}
+                        </div>
                       </div>
-                    )}
-                  </div>
-                )}
+
+                      {parseError && (
+                        <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-4 flex items-center gap-3 animate-fade-in-up">
+                          <svg className="w-5 h-5 text-red-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                            <circle cx="12" cy="12" r="10" />
+                            <line x1="12" y1="8" x2="12" y2="12" />
+                            <line x1="12" y1="16" x2="12.01" y2="16" />
+                          </svg>
+                          <div className="flex-1 text-red-300 text-sm font-medium">
+                            {parseError}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
             )}
 
@@ -490,9 +464,21 @@ function ExamCreation({ onNavigate }) {
                         ? `المجموع: ${assignedMarks} / ${totalMarks}`
                         : `Assigned: ${assignedMarks} / ${totalMarks}`}
                     </span>
+                    {questions.length > 0 && (
+                      <button
+                        onClick={handleClearAllQuestions}
+                        className="px-5 py-2.5 rounded-xl font-semibold text-sm transition-all duration-300 flex items-center gap-2 border border-red-500/20 bg-red-500/5 hover:bg-red-500/10 hover:border-red-500/40 text-red-400 hover:-translate-y-0.5 active:scale-95 shrink-0"
+                      >
+                        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="3 6 5 6 21 6" />
+                          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                        </svg>
+                        <span>{language === 'ar' ? 'مسح الأسئلة' : 'Clear All'}</span>
+                      </button>
+                    )}
                     <button
                       onClick={() => setShowAddQuestion(true)}
-                      className={`relative group px-5 py-2.5 rounded-xl font-semibold text-sm transition-all duration-300 flex items-center gap-2 overflow-hidden shadow-[0_0_20px_rgba(168,85,247,0.2)] hover:shadow-[0_0_30px_rgba(168,85,247,0.4)] hover:-translate-y-0.5 ${language === 'ar' ? 'flex-row-reverse' : ''}`}
+                      className={`relative group px-5 py-2.5 rounded-xl font-semibold text-sm transition-all duration-300 flex items-center gap-2 overflow-hidden shadow-[0_0_20px_rgba(168,85,247,0.2)] hover:shadow-[0_0_30px_rgba(168,85,247,0.4)] hover:-translate-y-0.5 shrink-0 ${language === 'ar' ? 'flex-row-reverse' : ''}`}
                     >
                       <div className="absolute inset-0 bg-gradient-to-r from-purple-600 to-cyan-600 opacity-90 group-hover:opacity-100 transition-opacity"></div>
                       <svg className="w-4 h-4 relative z-10 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -518,69 +504,95 @@ function ExamCreation({ onNavigate }) {
                   </div>
                 ) : (
                   <div className="space-y-4">
-                    {questions.map((q, index) => (
-                      <div key={q.id} className="bg-slate-950/40 border border-white/10 rounded-xl p-5 hover:border-white/20 transition group">
-                        <div className={`flex items-start justify-between gap-4 ${language === 'ar' ? 'flex-row-reverse text-right' : ''}`}>
-                          <div className="flex-1">
-                            <div className={`flex items-center gap-3 mb-3 ${language === 'ar' ? 'flex-row-reverse' : ''}`}>
-                              <span className="px-3 py-1 rounded bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 text-xs font-bold tracking-widest uppercase">Q{index + 1}</span>
-                              <span className="bg-white/5 border border-white/10 text-slate-300 px-3 py-1 rounded text-xs font-bold tracking-widest uppercase">
-                                {q.type === 'mcq' ? 'Multiple Choice' : q.type === 'essay' ? 'Essay' : 'True/False'}
-                              </span>
-                              <span className="text-purple-400 text-xs font-bold tracking-widest uppercase bg-purple-500/10 px-3 py-1 rounded border border-purple-500/20">{q.marks} marks</span>
-                            </div>
-                            <p className="text-white text-base font-medium mb-4 leading-relaxed">{q.question}</p>
+                    {questions.map((q, index) => {
+                      const isMissingAnswer = q.correctAnswerIndex === null;
+                      return (
+                        <div key={q.id} className={`border rounded-xl p-5 transition group ${
+                          isMissingAnswer 
+                            ? 'border-amber-500/50 bg-amber-500/5 hover:border-amber-500/70' 
+                            : 'bg-slate-950/40 border-white/10 hover:border-white/20'
+                        }`}>
+                          <div className={`flex items-start justify-between gap-4 ${language === 'ar' ? 'flex-row-reverse text-right' : ''}`}>
+                            <div className="flex-1">
+                              <div className={`flex items-center gap-3 mb-3 ${language === 'ar' ? 'flex-row-reverse' : ''}`}>
+                                <span className="px-3 py-1 rounded bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 text-xs font-bold tracking-widest uppercase">Q{index + 1}</span>
+                                <span className="bg-white/5 border border-white/10 text-slate-300 px-3 py-1 rounded text-xs font-bold tracking-widest uppercase">
+                                  {q.type === 'mcq' ? 'Multiple Choice' : q.type === 'essay' ? 'Essay' : 'True/False'}
+                                </span>
+                                <span className="text-purple-400 text-xs font-bold tracking-widest uppercase bg-purple-500/10 px-3 py-1 rounded border border-purple-500/20">{q.marks} marks</span>
+                                {isMissingAnswer && (
+                                  <span className="bg-amber-500/15 border border-amber-500/30 text-amber-400 px-3 py-1 rounded text-[10px] font-bold tracking-widest uppercase animate-pulse">
+                                    ⚠ {language === 'ar' ? 'إجابة مفقودة' : 'Missing Answer'}
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-white text-base font-medium mb-4 leading-relaxed">{q.question}</p>
 
-                            {q.type === 'mcq' && (
-                              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                {q.options.map((option, i) => (
-                                  <div key={i} className={`flex items-center p-3 rounded-lg border ${q.correctAnswerIndex === i ? 'bg-emerald-500/10 border-emerald-500/30' : 'bg-white/5 border-white/5'} ${language === 'ar' ? 'flex-row-reverse gap-3' : 'gap-3'}`}>
-                                    <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 ${q.correctAnswerIndex === i ? 'border-emerald-400 bg-emerald-500/20' : 'border-slate-600 bg-slate-900/50'
-                                      }`}>
-                                      {q.correctAnswerIndex === i && (
-                                        <div className="w-2.5 h-2.5 bg-emerald-400 rounded-full shadow-[0_0_8px_rgba(52,211,153,0.8)]"></div>
-                                      )}
+                              {q.type === 'mcq' && (
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                  {q.options.map((option, i) => (
+                                    <div key={i} className={`flex items-center p-3 rounded-lg border ${q.correctAnswerIndex === i ? 'bg-emerald-500/10 border-emerald-500/30' : 'bg-white/5 border-white/5'} ${language === 'ar' ? 'flex-row-reverse gap-3' : 'gap-3'}`}>
+                                      <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 ${q.correctAnswerIndex === i ? 'border-emerald-400 bg-emerald-500/20' : 'border-slate-600 bg-slate-900/50'
+                                        }`}>
+                                        {q.correctAnswerIndex === i && (
+                                          <div className="w-2.5 h-2.5 bg-emerald-400 rounded-full shadow-[0_0_8px_rgba(52,211,153,0.8)]"></div>
+                                        )}
+                                      </div>
+                                      <span className={`text-sm ${q.correctAnswerIndex === i ? 'text-emerald-300 font-semibold' : 'text-slate-300'}`}>
+                                        {option}
+                                      </span>
                                     </div>
-                                    <span className={`text-sm ${q.correctAnswerIndex === i ? 'text-emerald-300 font-semibold' : 'text-slate-300'}`}>
-                                      {option}
-                                    </span>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
+                                  ))}
+                                </div>
+                              )}
 
-                            {q.type === 'truefalse' && (
-                              <div className={`flex items-center gap-3 ${language === 'ar' ? 'flex-row-reverse' : ''}`}>
-                                <span className={`px-4 py-2 rounded-lg text-sm font-bold tracking-wide transition-colors ${q.correctAnswer === 'true' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-white/5 border border-white/10 text-slate-400'
-                                  }`}>True</span>
-                                <span className={`px-4 py-2 rounded-lg text-sm font-bold tracking-wide transition-colors ${q.correctAnswer === 'false' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-white/5 border border-white/10 text-slate-400'
-                                  }`}>False</span>
-                              </div>
-                            )}
+                              {q.type === 'truefalse' && (
+                                <div className={`flex items-center gap-3 ${language === 'ar' ? 'flex-row-reverse' : ''}`}>
+                                  <span className={`px-4 py-2 rounded-lg text-sm font-bold tracking-wide transition-colors ${q.correctAnswer === 'true' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-white/5 border border-white/10 text-slate-400'
+                                    }`}>True</span>
+                                  <span className={`px-4 py-2 rounded-lg text-sm font-bold tracking-wide transition-colors ${q.correctAnswer === 'false' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-white/5 border border-white/10 text-slate-400'
+                                    }`}>False</span>
+                                </div>
+                              )}
 
-                            {q.type === 'essay' && (
-                              <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-3 inline-flex items-center gap-2">
-                                <svg className="w-4 h-4 text-yellow-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                  <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                              {q.type === 'essay' && (
+                                <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-3 inline-flex items-center gap-2">
+                                  <svg className="w-4 h-4 text-yellow-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                                  </svg>
+                                  <span className="text-yellow-400/80 text-xs font-semibold uppercase tracking-wider">Manual grading required</span>
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="flex gap-2 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-all shrink-0">
+                              <button
+                                onClick={() => handleEditQuestion(q)}
+                                className="w-10 h-10 rounded-xl flex items-center justify-center bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 hover:bg-cyan-500/20 hover:border-cyan-500/40 transition-all"
+                                title={language === 'ar' ? 'تعديل السؤال' : 'Edit Question'}
+                              >
+                                <svg className="w-4.5 h-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                  <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7" />
                                   <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
                                 </svg>
-                                <span className="text-yellow-400/80 text-xs font-semibold uppercase tracking-wider">Manual grading required</span>
-                              </div>
-                            )}
-                          </div>
+                              </button>
 
-                          <button
-                            onClick={() => deleteQuestion(q.id)}
-                            className="w-10 h-10 rounded-xl flex items-center justify-center bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 hover:border-red-500/40 transition-all opacity-0 group-hover:opacity-100 focus:opacity-100"
-                          >
-                            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                              <polyline points="3 6 5 6 21 6" />
-                              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                            </svg>
-                          </button>
+                              <button
+                                onClick={() => deleteQuestion(q.id)}
+                                className="w-10 h-10 rounded-xl flex items-center justify-center bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 hover:border-red-500/40 transition-all"
+                                title={language === 'ar' ? 'حذف السؤال' : 'Delete Question'}
+                              >
+                                <svg className="w-4.5 h-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                  <polyline points="3 6 5 6 21 6" />
+                                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                                </svg>
+                              </button>
+                            </div>
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
                 <div className="pt-6 mt-6 border-t border-white/5 flex flex-col gap-4">
@@ -761,17 +773,21 @@ function ExamCreation({ onNavigate }) {
         </div>
       </main>
 
-      {/* Add manually Overlay remains same ... */}
+      {/* Manual question add/edit modal drawer */}
       {
         showAddQuestion && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowAddQuestion(false)}></div>
+            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={closeQuestionModal}></div>
             <div className={`bg-slate-900 border border-white/10 p-6 rounded-2xl shadow-2xl w-full max-w-xl relative z-10 animate-fade-in-up ${language === 'ar' ? 'text-right' : ''}`}>
 
               <div className={`flex items-center justify-between mb-6 pb-4 border-b border-white/5 ${language === 'ar' ? 'flex-row-reverse' : ''}`}>
-                <h3 className="text-white text-lg font-bold">{t('examiner.examCreation.addQuestion.title')}</h3>
+                <h3 className="text-white text-lg font-bold">
+                  {editingQuestionId 
+                    ? (language === 'ar' ? 'تعديل السؤال' : 'Edit Question') 
+                    : t('examiner.examCreation.addQuestion.title')}
+                </h3>
                 <button
-                  onClick={() => setShowAddQuestion(false)}
+                  onClick={closeQuestionModal}
                   className="p-2 hover:bg-white/5 rounded-lg transition-colors text-slate-400 hover:text-white"
                 >
                   <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -834,7 +850,7 @@ function ExamCreation({ onNavigate }) {
 
                 <div className={`mt-6 pt-6 border-t border-white/5 flex gap-3 ${language === 'ar' ? 'flex-row-reverse' : ''}`}>
                   <button
-                    onClick={() => setShowAddQuestion(false)}
+                    onClick={closeQuestionModal}
                     className="px-5 py-2.5 rounded-xl font-bold text-slate-300 border border-white/10 hover:bg-white/5 transition-colors"
                   >
                     {t('examiner.examCreation.addQuestion.cancelBtn')}
@@ -844,7 +860,11 @@ function ExamCreation({ onNavigate }) {
                     disabled={!currentQuestion.question.trim() || !currentQuestion.marks || currentQuestion.correctAnswerIndex === null || !areAllOptionsFilled}
                     className="flex-1 px-5 py-2.5 rounded-xl font-bold text-white bg-gradient-to-r from-purple-600 to-cyan-600 shadow-[0_0_20px_rgba(168,85,247,0.3)] hover:shadow-[0_0_30px_rgba(168,85,247,0.5)] transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed group relative overflow-hidden"
                   >
-                    <span className="relative z-10">{t('examiner.examCreation.addQuestion.addBtn')}</span>
+                    <span className="relative z-10">
+                      {editingQuestionId 
+                        ? (language === 'ar' ? 'حفظ التعديلات' : 'Save Changes') 
+                        : t('examiner.examCreation.addQuestion.addBtn')}
+                    </span>
                   </button>
                 </div>
               </div>
@@ -852,6 +872,65 @@ function ExamCreation({ onNavigate }) {
           </div>
         )
       }
+      {/* ── Custom Glassmorphic Clear Questions Confirmation Overlay ── */}
+      {showConfirmClear && (
+        <div className="fixed inset-0 z-[2000] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fade-in-up">
+          <div className="relative w-full max-w-md animate-zoom-in">
+            {/* Ambient Background Glow */}
+            <div className="absolute -inset-1 rounded-3xl bg-gradient-to-br from-red-500/30 via-orange-500/25 to-purple-500/30 blur-xl pointer-events-none" />
+
+            <div className="relative rounded-2xl border border-white/10 bg-slate-950/95 backdrop-blur-2xl overflow-hidden shadow-2xl">
+              <div className="h-[2px] w-full bg-gradient-to-r from-red-500 via-orange-500 to-purple-500" />
+
+              <div className="p-8 text-center">
+                {/* Warning Icon */}
+                <div className="flex justify-center mb-6">
+                  <div className="w-16 h-16 rounded-full bg-red-500/10 border border-red-500/30 flex items-center justify-center text-red-400 animate-pulse">
+                    <svg className="w-8 h-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                      <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                      <line x1="12" y1="9" x2="12" y2="13" />
+                      <line x1="12" y1="17" x2="12.01" y2="17" />
+                    </svg>
+                  </div>
+                </div>
+
+                <h2 className="text-white text-xl font-bold mb-2">
+                  {language === 'ar' ? 'مسح جميع الأسئلة؟' : 'Clear All Questions?'}
+                </h2>
+                <p className="text-slate-400 text-sm mb-6 leading-relaxed">
+                  {language === 'ar' 
+                    ? 'هل أنت متأكد من مسح جميع الأسئلة؟ لا يمكن التراجع عن هذا الإجراء.' 
+                    : 'Are you sure you want to clear all questions? This action cannot be undone.'}
+                </p>
+
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <button
+                    onClick={() => setShowConfirmClear(false)}
+                    className="w-full py-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 text-white font-semibold text-sm transition-all duration-300 hover:-translate-y-0.5 active:scale-[0.98]"
+                  >
+                    {language === 'ar' ? 'إلغاء' : 'Cancel'}
+                  </button>
+
+                  <button
+                    onClick={confirmClearAllQuestions}
+                    className="w-full relative group py-3 rounded-xl font-bold text-sm text-white overflow-hidden transition-all duration-300 hover:-translate-y-0.5 active:scale-[0.98] shadow-lg hover:shadow-red-500/20"
+                    style={{ boxShadow: '0 0 20px rgba(239,68,68,0.2)' }}
+                  >
+                    <div className="absolute inset-0 bg-gradient-to-r from-red-600 to-orange-500 opacity-90 group-hover:opacity-100 transition-opacity" />
+                    <span className="relative z-10 flex items-center justify-center gap-2">
+                      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                        <polyline points="3 6 5 6 21 6" />
+                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2 2v2" />
+                      </svg>
+                      {language === 'ar' ? 'مسح الأسئلة' : 'Clear All'}
+                    </span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

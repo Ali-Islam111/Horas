@@ -1,8 +1,7 @@
 // Controller: useExamCreation Hook - Business logic for exam creation
-
 import { useState, useEffect } from 'react';
 import { examService } from '../services/examService';
-import { parseExamFileWithGemini } from '../services/geminiService';
+import { API_BASE_URL } from '../config/api';
 
 export const useExamCreation = () => {
   const generateAccessCode = () => `EX-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
@@ -111,6 +110,8 @@ export const useExamCreation = () => {
         errors.questions = 'At least one question is required';
       } else if (assignedMarks !== parseInt(totalMarks)) {
         errors.questions = `Assigned marks (${assignedMarks}) must equal total marks (${totalMarks})`;
+      } else if (questions.some(q => q.correctAnswerIndex === null)) {
+        errors.questions = 'All questions must have a correct answer selected before proceeding.';
       }
       if (Object.keys(errors).length > 0) {
         setStepErrors(errors);
@@ -126,83 +127,114 @@ export const useExamCreation = () => {
     setCurrentStep(prev => Math.max(prev - 1, 1));
   };
 
-  // Gemini Integration
-  const [geminiApiKey, setGeminiApiKey] = useState(() =>
-    localStorage.getItem('gemini_api_key') || import.meta.env.VITE_GEMINI_API_KEY || ''
-  );
-
-  const updateGeminiApiKey = (key) => {
-    setGeminiApiKey(key);
-    if (key) {
-      localStorage.setItem('gemini_api_key', key);
-    } else {
-      localStorage.removeItem('gemini_api_key');
-    }
-  };
-
-  // File upload state
-  const [uploadedFile, setUploadedFile] = useState(null);
-  const [selectedModel, setSelectedModel] = useState('A');
-  const [parsedData, setParsedData] = useState(null);
+  // Parser file states (Version 2)
+  const [stagedFile, setStagedFile] = useState(null);
   const [isParsingFile, setIsParsingFile] = useState(false);
   const [parseError, setParseError] = useState('');
 
-  // Handle file upload and parsing
-  const handleFileUpload = async (event) => {
+  // Handle staging on input change
+  const handleFileStage = (event) => {
     const file = event.target.files?.[0];
     if (!file) return;
+    setStagedFile(file);
+    setParseError('');
+  };
 
-    setUploadedFile(file);
+  // Handle abort upload
+  const handleAbortUpload = () => {
+    setStagedFile(null);
+    setParseError('');
+  };
+
+  // Extract questions using deterministic backend service
+  const handleExtractQuestions = async (showToast, t, language) => {
+    if (!stagedFile) return;
+
     setIsParsingFile(true);
     setParseError('');
 
     try {
-      if (!geminiApiKey) {
-        throw new Error('MISSING_API_KEY');
+      const formData = new FormData();
+      formData.append('file', stagedFile);
+
+      const token = localStorage.getItem('auth_token');
+      const response = await fetch(`${API_BASE_URL}/api/exams/parse`, {
+        method: 'POST',
+        headers: {
+          'Accept': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.detail || `Server returned status code ${response.status}`);
       }
 
-      const aiQuestions = await parseExamFileWithGemini(file, geminiApiKey);
+      const result = await response.json();
+      const extractedQuestions = result.questions || [];
+      const warnings = result.warnings || [];
 
-      // Calculate total marks from AI questions
-      const normalizedQuestions = aiQuestions.map((q, index) => normalizeQuestion(q, index));
-      const calculatedMarks = normalizedQuestions.reduce((sum, q) => sum + (Number(q.marks) || 1), 0);
+      if (extractedQuestions.length === 0) {
+        throw new Error('No valid multiple-choice questions found in the document.');
+      }
 
-      setQuestions(normalizedQuestions);
-      if (!examTitle) setExamTitle(`Exam from ${file.name}`);
-      if (!totalMarks) setTotalMarks(calculatedMarks.toString());
-      if (!passingMarks) setPassingMarks(Math.floor(calculatedMarks / 2).toString());
+      // Format and append
+      const formatted = extractedQuestions.map((q, index) => {
+        const options = Array.isArray(q.options) && q.options.length > 0
+          ? q.options
+          : ['', '', '', ''];
+        const correctAnswer = q.correct_answer || '';
+        const correctAnswerIndex = options.findIndex((opt) => opt === correctAnswer);
 
-    } catch (error) {
-      if (error.message === 'MISSING_API_KEY') {
-        setParseError('Please enter your Google Gemini API Key to use AI extraction.');
+        return {
+          id: `extracted-${Date.now()}-${index}-${Math.random().toString(36).slice(2, 6)}`,
+          type: 'mcq',
+          question: q.text || '',
+          marks: Number(q.marks) || 1,
+          options,
+          correctAnswer,
+          correctAnswerIndex: correctAnswerIndex >= 0 ? correctAnswerIndex : null,
+        };
+      });
+
+      setQuestions((prev) => [...prev, ...formatted]);
+
+      const hasMissingAnswer = formatted.some((q) => q.correctAnswerIndex === null);
+
+      if (warnings.length > 0 || hasMissingAnswer) {
+        showToast(
+          language === 'ar'
+            ? `تم استخراج ${formatted.length} أسئلة. تحقق من الأسئلة المميزة - لم يتم تحديد الإجابة الصحيحة.`
+            : `${formatted.length} questions extracted. Check highlighted questions — correct answer could not be detected.`,
+          'warning'
+        );
       } else {
-        setParseError(`Failed to parse file: ${error.message}`);
+        showToast(
+          language === 'ar'
+            ? `تم استخراج ${formatted.length} أسئلة بنجاح!`
+            : `${formatted.length} questions extracted successfully!`,
+          'success'
+        );
       }
-      console.error('File parsing error:', error);
+
+      setStagedFile(null);
+    } catch (err) {
+      console.error('[ExamCreation] Parsing error:', err);
+      setParseError(err.message || 'An error occurred while parsing the file.');
     } finally {
       setIsParsingFile(false);
-      // Reset input so the same file can be selected again if needed
-      if (event.target) event.target.value = '';
     }
   };
 
-  // Load questions from selected model
-  const loadQuestionsFromModel = (model, data = parsedData) => {
-    if (!data?.models?.[model]) return;
-
-    const modelQuestions = data.models[model];
-    const formattedQuestions = modelQuestions.map((q, index) => normalizeQuestion(q, index));
-    setQuestions(formattedQuestions);
-    setSelectedModel(model);
-  };
-
-  // Add new question
+  // Add new question manually
   const addQuestion = (questionData) => {
     if (questionData) {
       setQuestions([
         ...questions,
         {
-          id: `manual-${Date.now()}`,
+          id: `manual-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
           type: questionData.type || 'mcq',
           question: questionData.question || '',
           marks: Number(questionData.marks) || 1,
@@ -217,11 +249,12 @@ export const useExamCreation = () => {
     setQuestions([
       ...questions,
       {
-        id: Date.now(),
+        id: `manual-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
         question: '',
-        type: 'multiple-choice',
+        type: 'mcq',
         options: ['', '', '', ''],
         correctAnswer: '',
+        correctAnswerIndex: null,
         marks: 5,
       },
     ]);
@@ -231,6 +264,13 @@ export const useExamCreation = () => {
   const updateQuestion = (id, field, value) => {
     setQuestions(
       questions.map((q) => (q.id === id ? { ...q, [field]: value } : q))
+    );
+  };
+
+  // Replace full question object (used for Edit mode saves)
+  const replaceQuestion = (id, updatedQuestionData) => {
+    setQuestions((prev) =>
+      prev.map((q) => (q.id === id ? { ...q, ...updatedQuestionData } : q))
     );
   };
 
@@ -251,6 +291,11 @@ export const useExamCreation = () => {
   // Delete question
   const deleteQuestion = (id) => {
     setQuestions(questions.filter((q) => q.id !== id));
+  };
+
+  // Clear all questions
+  const clearQuestions = () => {
+    setQuestions([]);
   };
 
   // Submit exam
@@ -277,7 +322,6 @@ export const useExamCreation = () => {
 
     try {
       const newExam = await examService.createExam(examData);
-      // Reset form
       resetForm();
       return true;
     } catch (error) {
@@ -295,9 +339,7 @@ export const useExamCreation = () => {
     setTotalMarks('');
     setPassingMarks('');
     setQuestions([]);
-    setUploadedFile(null);
-    setParsedData(null);
-    setSelectedModel('A');
+    setStagedFile(null);
     setParseError('');
     setCurrentStep(1);
     setStepErrors({});
@@ -313,18 +355,14 @@ export const useExamCreation = () => {
     totalMarks,
     passingMarks,
     questions,
-    uploadedFile,
-    selectedModel,
-    parsedData,
+    stagedFile,
     isParsingFile,
     parseError,
-    geminiApiKey,
     currentStep,
     stepErrors,
     assignedMarks,
 
     // Actions
-    updateGeminiApiKey,
     nextStep,
     prevStep,
     setExamTitle,
@@ -333,12 +371,15 @@ export const useExamCreation = () => {
     setDuration,
     setTotalMarks,
     setPassingMarks,
-    handleFileUpload,
-    loadQuestionsFromModel,
+    handleFileStage,
+    handleAbortUpload,
+    handleExtractQuestions,
     addQuestion,
     updateQuestion,
     updateQuestionOption,
+    replaceQuestion,
     deleteQuestion,
+    clearQuestions,
     handleSubmit,
     resetForm,
   };
