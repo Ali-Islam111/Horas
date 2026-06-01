@@ -20,6 +20,7 @@ def create_user(db: Session, user: UserCreate):
         full_name=user.full_name,
         password_hash=hashed_pw,
         role=user.role,
+        auth_provider=user.auth_provider,
     )
     db.add(db_user)
     db.commit()

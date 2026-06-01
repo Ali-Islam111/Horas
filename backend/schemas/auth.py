@@ -10,10 +10,12 @@ class UserBase(BaseModel):
 
 class UserCreate(UserBase):
     password: str
+    auth_provider: str = "local"
 
 
 class UserResponse(UserBase):
     id: int
+    auth_provider: str
 
     class Config:
         from_attributes = True  # Pydantic v2: replaces orm_mode=True

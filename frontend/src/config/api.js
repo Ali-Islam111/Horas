@@ -4,8 +4,8 @@
  * API Configuration
  * Centralizes all API endpoints and configurations
  */
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
-const WS_BASE_URL  = import.meta.env.VITE_WS_URL  || 'ws://localhost:8000'
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'
+const WS_BASE_URL  = import.meta.env.VITE_WS_URL  || 'ws://127.0.0.1:8000'
 
 // للإنتاج (Production) - لو هتنشر المشروع على سيرفر
 // const API_BASE_URL = 'https://your-production-api.com'
